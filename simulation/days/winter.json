@@ -1,0 +1,31 @@
+[
+  {
+    "metadata": {
+      "season": "WINTER",
+      "day_type": "Tuesday",
+      "cleaning_day": false
+    },
+    "environment": {
+      "outdoor_temperature_c": [6.0, 5.5, 5.0, 5.0, 5.5, 6.0, 7.0, 8.5, 10.0, 12.0, 13.5, 14.0, 14.0, 13.5, 12.0, 10.5, 9.0, 8.0, 7.5, 7.0, 6.5, 6.5, 6.0, 6.0],
+      "solar_production_kw":   [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.3, 0.8, 1.2, 1.5, 1.5, 1.2, 0.8, 0.3, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+      "illuminance_level":     [0, 0, 0, 0, 0, 0, 0, 10, 30, 45, 55, 60, 60, 55, 45, 20, 0, 0, 0, 0, 0, 0, 0, 0]
+    },
+    "grid_market": {
+      "dynamic_price_eur_kwh": [0.10, 0.10, 0.10, 0.10, 0.10, 0.10, 0.10, 0.10, 0.15, 0.15, 0.15, 0.15, 0.15, 0.15, 0.15, 0.15, 0.15, 0.15, 0.25, 0.25, 0.25, 0.25, 0.15, 0.15],
+      "grid_carbon_intensity": [200, 190, 190, 180, 180, 200, 250, 300, 280, 260, 220, 200, 200, 220, 260, 320, 380, 450, 500, 520, 480, 400, 300, 250]
+    },
+    "user_profile": {
+      "number_of_people":      [1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1],
+      "occupancy_status":      ["SLEEP", "SLEEP", "SLEEP", "SLEEP", "SLEEP", "SLEEP", "ACTIVE", "ACTIVE", "AWAY", "AWAY", "AWAY", "AWAY", "AWAY", "AWAY", "AWAY", "AWAY", "AWAY", "ACTIVE", "ACTIVE", "ACTIVE", "ACTIVE", "ACTIVE", "SLEEP", "SLEEP"],
+      "comfort_temp_min_c":    [18, 18, 18, 18, 18, 18, 20, 20, 15, 15, 15, 15, 15, 15, 15, 15, 15, 20, 20, 20, 20, 20, 18, 18],
+      "comfort_temp_max_c":    [24, 24, 24, 24, 24, 24, 24, 24, 30, 30, 30, 30, 30, 30, 30, 30, 30, 24, 24, 24, 24, 24, 24, 24]
+    },
+    "base_load": {
+      "uncontrollable_kw":     [0.3, 0.3, 0.3, 0.3, 0.3, 0.4, 0.9, 1.0, 0.4, 0.4, 0.4, 0.4, 0.4, 0.4, 0.4, 0.4, 0.6, 1.4, 1.7, 2.0, 1.4, 0.9, 0.4, 0.3]
+    },
+    "weather": {
+      "atmosphere" :           ["CLEAR_NIGHT", "CLEAR_NIGHT", "CLEAR_NIGHT", "CLEAR_NIGHT", "CLEAR_NIGHT", "CLEAR_NIGHT", "CLEAR_NIGHT", "CLOUDY", "CLOUDY", "CLOUDY", "PARTLY_CLOUDY", "PARTLY_CLOUDY", "PARTLY_CLOUDY", "PARTLY_CLOUDY", "CLOUDY", "CLOUDY", "CLEAR_NIGHT", "CLEAR_NIGHT", "CLEAR_NIGHT", "CLEAR_NIGHT", "CLEAR_NIGHT", "CLEAR_NIGHT", "CLEAR_NIGHT", "CLEAR_NIGHT"],
+      "wind_speed_kmh":        [15, 12, 10, 10, 12, 15, 18, 20, 22, 25, 28, 30, 30, 28, 25, 20, 18, 15, 15, 12, 10, 10, 12, 15]
+    }
+  }
+]
