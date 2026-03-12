@@ -3,7 +3,8 @@ import json
 from spade.agent import Agent
 from spade.behaviour import CyclicBehaviour
 from config import AGENTS, PASSWORD, SIMULATION_SPEED
-from simulation.enviroment import EnvironmentAgent 
+from simulation.enviroment import EnvironmentAgent
+from device import TemperatureSensor
 
 class DummyDeviceAgent(Agent):
     class ReceiveEnvironment(CyclicBehaviour):
@@ -23,11 +24,12 @@ async def main():
     print(f"Simulation speed: 1 hour = {SIMULATION_SPEED} real seconds.\n")
 
     # List of receiver agents
-    receiver_jids = [AGENTS["world"], AGENTS["fridge"]]
+    receiver_jids = [AGENTS["world"], AGENTS["fridge"], AGENTS["temperature_sensor_livingroom"]]
 
     # 1. Instantiate Device Agents
     world_agent = DummyDeviceAgent(AGENTS["world"], PASSWORD)
     fridge_agent = DummyDeviceAgent(AGENTS["fridge"], PASSWORD)
+    temp_sensor_livingroom = TemperatureSensor(AGENTS["temperature_sensor_livingroom"], PASSWORD, device_type="temperature_sensor")
     
     # 2. Instantiate Environment Agent (Reads JSON and Broadcasts)
     env_agent = EnvironmentAgent(
@@ -40,6 +42,7 @@ async def main():
     # Start all agents
     await world_agent.start(auto_register=True)
     await fridge_agent.start(auto_register=True)
+    await temp_sensor_livingroom.start(auto_register=True)
     await env_agent.start(auto_register=True)
 
     try:
@@ -50,6 +53,7 @@ async def main():
     finally:
         await world_agent.stop()
         await fridge_agent.stop()
+        await temp_sensor_livingroom.stop()
         await env_agent.stop()
         print("System shut down successfully.")
 
