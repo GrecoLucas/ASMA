@@ -6,7 +6,8 @@ from spade.agent import Agent
 from spade.behaviour import CyclicBehaviour, PeriodicBehaviour
 from spade.message import Message
 from config import AGENTS, PASSWORD, SIMULATION_SPEED
-from simulation.enviroment import WorldAgent 
+from simulation.enviroment import WorldAgent
+from device import TemperatureSensor
 
 class DummyDeviceAgent(Agent):
     class ReceiveEnvironment(CyclicBehaviour):
@@ -25,11 +26,21 @@ async def main():
     print("Starting Smart Home Energy Management System...")
     print(f"Simulation speed: 1 hour = {SIMULATION_SPEED} real seconds.\n")
 
+    # List of receiver agents
+    receiver_jids = [AGENTS["world"], AGENTS["fridge"], AGENTS["temperature_sensor_livingroom"]]
+
     # 1. Instantiate Device Agents
+    fridge_agent = DummyDeviceAgent(AGENTS["fridge"], PASSWORD)
+    temp_sensor_livingroom = TemperatureSensor(AGENTS["temperature_sensor_livingroom"], PASSWORD, device_type="temperature_sensor")
+    
+
     world_agent = WorldAgent(AGENTS["world"], PASSWORD, season="winter")
 
     # Start all agents
     await world_agent.start(auto_register=True)
+    await fridge_agent.start(auto_register=True)
+    await temp_sensor_livingroom.start(auto_register=True)
+    await env_agent.start(auto_register=True)
 
     try:
         while True:
@@ -38,6 +49,9 @@ async def main():
         print("\nInterrupting simulation...")
     finally:
         await world_agent.stop()
+        await fridge_agent.stop()
+        await temp_sensor_livingroom.stop()
+        await env_agent.stop()
         print("System shut down successfully.")
 
 if __name__ == "__main__":
