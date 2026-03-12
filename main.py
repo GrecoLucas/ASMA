@@ -1,9 +1,12 @@
 import asyncio
 import json
+import math
+import random
 from spade.agent import Agent
-from spade.behaviour import CyclicBehaviour
+from spade.behaviour import CyclicBehaviour, PeriodicBehaviour
+from spade.message import Message
 from config import AGENTS, PASSWORD, SIMULATION_SPEED
-from simulation.enviroment import EnvironmentAgent 
+from simulation.enviroment import WorldAgent 
 
 class DummyDeviceAgent(Agent):
     class ReceiveEnvironment(CyclicBehaviour):
@@ -22,25 +25,11 @@ async def main():
     print("Starting Smart Home Energy Management System...")
     print(f"Simulation speed: 1 hour = {SIMULATION_SPEED} real seconds.\n")
 
-    # List of receiver agents
-    receiver_jids = [AGENTS["world"], AGENTS["fridge"]]
-
     # 1. Instantiate Device Agents
-    world_agent = DummyDeviceAgent(AGENTS["world"], PASSWORD)
-    fridge_agent = DummyDeviceAgent(AGENTS["fridge"], PASSWORD)
-    
-    # 2. Instantiate Environment Agent (Reads JSON and Broadcasts)
-    env_agent = EnvironmentAgent(
-        AGENTS["environment"], 
-        PASSWORD, 
-        scenario_file="simulation/days/summer.json", # Change to winter.json to test winter
-        receivers=receiver_jids
-    )
+    world_agent = WorldAgent(AGENTS["world"], PASSWORD, season="winter")
 
     # Start all agents
     await world_agent.start(auto_register=True)
-    await fridge_agent.start(auto_register=True)
-    await env_agent.start(auto_register=True)
 
     try:
         while True:
@@ -49,8 +38,6 @@ async def main():
         print("\nInterrupting simulation...")
     finally:
         await world_agent.stop()
-        await fridge_agent.stop()
-        await env_agent.stop()
         print("System shut down successfully.")
 
 if __name__ == "__main__":
