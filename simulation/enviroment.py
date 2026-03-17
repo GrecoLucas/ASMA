@@ -5,7 +5,14 @@ import random
 from spade.agent import Agent
 from spade.behaviour import CyclicBehaviour, PeriodicBehaviour
 from spade.message import Message
-from config import AGENTS, PASSWORD, SIMULATION_SPEED 
+from config import AGENTS, PASSWORD, SIMULATION_SPEED
+
+# Import GUI state if available
+try:
+    from gui import get_simulation_state
+    GUI_AVAILABLE = True
+except ImportError:
+    GUI_AVAILABLE = False 
 
 class WorldAgent(Agent):
     def __init__(self, jid, password, season="summer", receivers=None):
@@ -109,6 +116,11 @@ class WorldAgent(Agent):
             # Log current conditions
             print(f"[WorldAgent] {state['hour']:02d}:00 | Temp: {state['temperature']}°C | "
                   f"Solar: {state['solar_production']}kW | Price: {state['energy_price']}€")
+
+            # Update GUI state
+            if GUI_AVAILABLE:
+                gui_state = get_simulation_state()
+                gui_state.update_world_state(state)
 
             # Broadcast state to all receiver agents
             for receiver_jid in self.agent.receivers:

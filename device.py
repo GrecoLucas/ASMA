@@ -2,6 +2,13 @@ import json
 from spade.agent import Agent
 from spade.behaviour import CyclicBehaviour
 
+# Import GUI state if available
+try:
+    from gui import get_simulation_state
+    GUI_AVAILABLE = True
+except ImportError:
+    GUI_AVAILABLE = False
+
 class Device(Agent):
     """Base class for device agents with sensors, actuators, and relations."""
     
@@ -140,6 +147,16 @@ class AirConditioner(Device):
 
                     else:
                         print(f"[{self.agent.name}] Hour: {hour:02d}h | Temp: {temperature}°C | AC: {current_state} | Target: {self.agent.target_temp}°C±{self.agent.temp_margin}°C")
+
+                    # Update GUI state
+                    if GUI_AVAILABLE:
+                        state = get_simulation_state()
+                        state.update_device_state(self.agent.name, {
+                            "ac_status": ac_actuator.get_state(),
+                            "current_temp": temperature,
+                            "target_temp": self.agent.target_temp,
+                            "temp_margin": self.agent.temp_margin
+                        })
 
                 except (json.JSONDecodeError, KeyError) as e:
                     print(f"[{self.agent.name}] Error parsing message: {e}")

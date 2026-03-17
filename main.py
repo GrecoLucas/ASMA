@@ -2,16 +2,23 @@ import asyncio
 import json
 import math
 import random
+from threading import Thread
 from spade.agent import Agent
 from spade.behaviour import CyclicBehaviour, PeriodicBehaviour
 from spade.message import Message
 from config import AGENTS, PASSWORD, SIMULATION_SPEED
 from simulation.enviroment import WorldAgent
 from device import AirConditioner
+from gui import start_gui
 
 async def main():
     print("Starting Smart Home Energy Management System...")
     print(f"Simulation speed: 1 hour = {SIMULATION_SPEED} real seconds.\n")
+
+    # Start GUI in separate thread
+    gui_thread = Thread(target=start_gui, daemon=True)
+    gui_thread.start()
+    print("GUI started...")
 
     # 1. Instantiate Device Agents
     ac_livingroom = AirConditioner(AGENTS["ac_livingroom"], PASSWORD, target_temp=22, temp_margin=2)
