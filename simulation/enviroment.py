@@ -95,7 +95,7 @@ class WorldAgent(Agent):
         async def run(self):
             # Advance time
             self.agent.current_hour = (self.agent.current_hour + 1) % 24
-            
+
             # New day started
             if self.agent.current_hour == 0:
                 self.agent.day_count += 1
@@ -109,6 +109,12 @@ class WorldAgent(Agent):
             # Log current conditions
             print(f"[WorldAgent] {state['hour']:02d}:00 | Temp: {state['temperature']}°C | "
                   f"Solar: {state['solar_production']}kW | Price: {state['energy_price']}€")
+
+            # Broadcast state to all receiver agents
+            for receiver_jid in self.agent.receivers:
+                msg = Message(to=receiver_jid)
+                msg.body = json.dumps(state)
+                await self.send(msg)
 
     async def setup(self):
         print(f"WorldAgent [{self.name}] starting simulation...")
