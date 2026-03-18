@@ -88,7 +88,7 @@ class Device(Agent):
         """
         Evaluate all rules for a given sensor and execute matching actuator commands.
 
-        Returns a list of (rule, triggered, action_taken) tuples.
+        Returns a list of (rule, condition_met, action_taken, state_changed) tuples.
         """
         results = []
         for rule in self.rules:
@@ -102,16 +102,16 @@ class Device(Agent):
             if condition_met and not rule.last_triggered:
                 # Transition: False -> True (condition just became true)
                 self.actuate(rule.actuator_name, rule.command)
-                result = (rule, True, f"Activated: {rule.command}")
+                result = (rule, True, f"Activated: {rule.command}", True)
                 rule.last_triggered = True
             elif not condition_met and rule.last_triggered:
                 # Transition: True -> False (condition just became false)
                 # We could execute a reverse command here if needed
                 # For now, just track the state change
                 rule.last_triggered = False
-                result = (rule, False, "Condition no longer met")
+                result = (rule, False, "Condition no longer met", False)
             else:
-                result = (rule, condition_met, "No state change")
+                result = (rule, condition_met, "No state change", False)
 
             results.append(result)
 
@@ -179,10 +179,10 @@ class Device(Agent):
                         rule_results = self.agent.evaluate_rules(sensor_name, sensor_value)
                         all_rule_results.extend(rule_results)
 
-                    # Check if any rule was triggered
-                    triggered_rules = [r for r, triggered, _ in all_rule_results if triggered]
-                    if triggered_rules:
-                        for rule in triggered_rules:
+                    # Notify world agent only when a rule actually changed state
+                    state_changed_rules = [r for r, _, _, state_changed in all_rule_results if state_changed]
+                    if state_changed_rules:
+                        for rule in state_changed_rules:
                             print(f"[{self.agent.name}] ✓ {rule.name}: {rule.command.upper()}")
                             # Notify world agent of state change
                             from config import AGENTS
@@ -232,12 +232,13 @@ class TemperatureSensor(Device):
                     temperature = data.get("temperature")
                     hour = data.get("hour")
                     print(f"[{self.agent.name}] Temperature reading -> Hour: {hour}h, Temp: {temperature}°C")
-                    self.agent.sensors["temperature"] = temperature
+                    self.agent.sensors["temperature"].update(temperature)
                 except (json.JSONDecodeError, KeyError) as e:
                     print(f"[{self.agent.name}] Error parsing message: {e}")
 
     async def setup(self):
         print(f"Agent [{self.name}] (TemperatureSensor) started.")
+        self.add_sensor("temperature", TemperatureSensorComponent())
         self.add_behaviour(self.ReadTemperature())
 
 

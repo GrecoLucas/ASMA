@@ -21,7 +21,7 @@ async def main():
     print("GUI started...")
 
     # 1. Instantiate Device Agents
-    ac_livingroom = AirConditioner(AGENTS["ac_livingroom"], PASSWORD, target_temp=18, temp_margin=2)
+    ac_livingroom = AirConditioner(AGENTS["ac_livingroom"], PASSWORD, target_temp=20, temp_margin=2)
     fridge = Refrigerator(AGENTS["fridge"], PASSWORD, target_temp=4, temp_margin=1)
     world_agent = WorldAgent(AGENTS["world"], PASSWORD, season="summer", receivers=[AGENTS["ac_livingroom"], AGENTS["fridge"]])
 
