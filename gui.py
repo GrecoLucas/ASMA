@@ -164,6 +164,16 @@ class SimulationGUI:
             info["comfort"] = ttk.Label(device_frame, text="Comfort: ----", style="Info.TLabel")
             info["comfort"].pack(anchor=tk.W, pady=2)
 
+        elif device_type == "refrigerator":
+            info["status"] = ttk.Label(device_frame, text="Compressor: --", style="Heading.TLabel")
+            info["status"].pack(anchor=tk.W, pady=2)
+
+            info["temp"] = ttk.Label(device_frame, text="Interior Temp: -- °C", style="Heading.TLabel")
+            info["temp"].pack(anchor=tk.W, pady=2)
+
+            info["target"] = ttk.Label(device_frame, text="Target Temp: -- °C", style="Heading.TLabel")
+            info["target"].pack(anchor=tk.W, pady=2)
+
         self.device_frames[device_name] = {
             "frame": device_frame,
             "labels": info,
@@ -186,7 +196,9 @@ class SimulationGUI:
         # Update device states
         for device_name in self.state.get_all_devices():
             if device_name not in self.device_frames:
-                self.add_device_frame(device_name, "air_conditioner")
+                device_state = self.state.get_device_state(device_name)
+                device_type = device_state.get("device_type", "unknown") if device_state else "unknown"
+                self.add_device_frame(device_name, device_type)
 
             device_state = self.state.get_device_state(device_name)
             device_info = self.device_frames[device_name]
@@ -215,6 +227,23 @@ class SimulationGUI:
                     comfort = "❌ Outside range"
 
                 device_info["labels"]["comfort"].config(text=f"Comfort: {comfort}")
+
+            elif device_info["type"] == "refrigerator":
+                status = device_state.get("compressor_status", "Unknown")
+                current_temp = device_state.get("current_temp", 0)
+                target_temp = device_state.get("target_temp", 0)
+                temp_margin = device_state.get("temp_margin", 0)
+
+                # Update labels
+                device_info["labels"]["status"].config(
+                    text=f"Compressor: {'🟢 RUNNING' if status == 'RUNNING' else '🔴 IDLE'}"
+                )
+                device_info["labels"]["temp"].config(
+                    text=f"Interior Temp: {current_temp:.1f} °C"
+                )
+                device_info["labels"]["target"].config(
+                    text=f"Target Temp: {target_temp:.1f} °C ±{temp_margin:.1f}°C"
+                )
 
         # Schedule next update
         self.root.after(1000, self.update_display)

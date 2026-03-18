@@ -21,7 +21,8 @@ class WorldAgent(Agent):
         self.receivers = receivers or []
         self.current_hour = 0
         self.day_count = 0
-        
+        self.active_devices = {}  # Track active devices and their effects
+
         # Base parameters for different seasons
         self.season_params = {
             "summer": {"base_temp": 22, "temp_range": 15, "solar_peak": 3.5},
@@ -30,19 +31,30 @@ class WorldAgent(Agent):
             "autumn": {"base_temp": 12, "temp_range": 10, "solar_peak": 2.2}
         }
 
+        # Initialize current temperature
+        params = self.season_params.get(self.season, self.season_params["summer"])
+        self.current_temperature = params["base_temp"]
+
     def generate_temperature(self, hour):
-        """Generate realistic temperature following daily patterns."""
+        """Generate realistic temperature variations with smooth transitions."""
         params = self.season_params.get(self.season, self.season_params["summer"])
         base_temp = params["base_temp"]
         temp_range = params["temp_range"]
-        
-        # Daily temperature cycle (min at 6am, max at 3pm)
+
+        # Calculate target temperature based on daily cycle (min at 6am, max at 3pm)
         cycle = math.cos((hour - 15) * math.pi / 12) * (temp_range / 2)
-        temperature = base_temp + cycle
-        
-        # Add some random variation
-        temperature += random.uniform(-2, 2)
-        return round(temperature, 1)
+        target_temp = base_temp + cycle
+
+        # Smooth transition: move current temp towards target by a small amount
+        # This simulates thermal inertia in the environment
+        transition_rate = 0.1  # How fast the temperature shifts (0-1, higher = faster)
+        self.current_temperature += (target_temp - self.current_temperature) * transition_rate
+
+        # Add small random variation for realistic weather fluctuations (±0.5°C)
+        variation = random.uniform(-0.5, 0.5)
+        self.current_temperature += variation
+
+        return round(self.current_temperature, 1)
 
     def generate_solar_production(self, hour):
         """Generate solar production based on sun patterns."""
@@ -96,6 +108,35 @@ class WorldAgent(Agent):
             "day": self.day_count,
             "simulated": True  # Flag to indicate this is simulated data
         }
+    
+    def apply_device_effects(self):
+        """Apply temperature effects from active devices."""
+        # AC cooling effect
+        if self.active_devices.get("ac.livingroom") == "ON":
+            # AC cools the environment gradually
+            self.current_temperature -= 0.8
+            print(f"[WorldAgent] AC is ON: cooling effect applied (now {self.current_temperature:.1f}°C)")
+
+        # Fridge cooling effect (minor, mostly contained)
+        if self.active_devices.get("fridge") == "ON":
+            self.current_temperature += 0.1
+
+    class DeviceStateListener(CyclicBehaviour):
+        """Listen for device state change messages."""
+        async def run(self):
+            msg = await self.receive(timeout=10)
+            if msg:
+                try:
+                    data = json.loads(msg.body)
+                    device_name = data.get("device_name")
+                    state = data.get("state")
+                    event = data.get("event")
+
+                    if event == "state_changed":
+                        self.agent.active_devices[device_name] = state
+                        print(f"[WorldAgent] Device '{device_name}' state: {state}")
+                except (json.JSONDecodeError, KeyError) as e:
+                    pass  # Ignore invalid messages
 
     class WorldSimulationBehaviour(PeriodicBehaviour):
         """Behavior that simulates world conditions and broadcasts them."""
@@ -110,12 +151,19 @@ class WorldAgent(Agent):
                 print(f"NEW SIMULATED DAY {self.agent.day_count} ({self.agent.season.upper()})")
                 print("="*60)
 
-            # Generate world state
+            # Generate world state (natural temperature first)
             state = self.agent.generate_world_state()
 
+            # Apply device effects AFTER natural temp calculation
+            self.agent.apply_device_effects()
+
+            # Update state with modified temperature after device effects
+            state["temperature"] = round(self.agent.current_temperature, 1)
+
             # Log current conditions
+            active_info = f" | Active devices: {', '.join(self.agent.active_devices.keys())}" if self.agent.active_devices else ""
             print(f"[WorldAgent] {state['hour']:02d}:00 | Temp: {state['temperature']}°C | "
-                  f"Solar: {state['solar_production']}kW | Price: {state['energy_price']}€")
+                  f"Solar: {state['solar_production']}kW | Price: {state['energy_price']}€{active_info}")
 
             # Update GUI state
             if GUI_AVAILABLE:
@@ -131,6 +179,7 @@ class WorldAgent(Agent):
     async def setup(self):
         print(f"WorldAgent [{self.name}] starting simulation...")
         print(f"Season: {self.season.title()}, Speed: {SIMULATION_SPEED}s/hour")
-        
+
         # Start behaviors
         self.add_behaviour(self.WorldSimulationBehaviour(period=SIMULATION_SPEED))
+        self.add_behaviour(self.DeviceStateListener())
