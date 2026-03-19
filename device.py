@@ -4,7 +4,7 @@ Device agents were moved to the `agents` package.
 This module re-exports the same classes to avoid breaking old imports.
 """
 
-from agents.appliance_agents import AirConditioner, Refrigerator, TemperatureSensor
+from agents import AirConditioner, Refrigerator, TemperatureSensor
 from agents.device_base import Device, Rule
 
 __all__ = [
