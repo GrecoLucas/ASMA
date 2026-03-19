@@ -1,4 +1,3 @@
-import asyncio
 import json
 import math
 import random
@@ -20,8 +19,13 @@ class WorldAgent(Agent):
         self.season = season.lower()
         self.receivers = receivers or []
         self.current_hour = 0
-        self.day_count = 0
+        self.day_count = 1
         self.active_devices = {}  # Track active devices and their effects
+        self.device_daily_consumption_kwh = {}
+        self.hourly_consumption_by_slot = {}
+        self.total_daily_consumption_kwh = 0.0
+        self.last_hour_consumption_kwh = 0.0
+        self.last_world_state = {}
 
         # Base parameters for different seasons
         self.season_params = {
@@ -34,6 +38,31 @@ class WorldAgent(Agent):
         # Initialize current temperature
         params = self.season_params.get(self.season, self.season_params["summer"])
         self.current_temperature = params["base_temp"]
+
+    def reset_daily_energy_totals(self):
+        """Reset daily consumption accounting at day rollover."""
+        self.device_daily_consumption_kwh = {}
+        self.hourly_consumption_by_slot = {}
+        self.total_daily_consumption_kwh = 0.0
+        self.last_hour_consumption_kwh = 0.0
+
+    def register_device_consumption(self, device_name, day, hour, consumption_kwh):
+        """Register hourly consumption from a device, de-duplicated by (day, hour, device)."""
+        if day != self.day_count:
+            return
+
+        slot_key = (day, hour)
+        slot_data = self.hourly_consumption_by_slot.setdefault(slot_key, {})
+
+        if device_name in slot_data:
+            return
+
+        slot_data[device_name] = consumption_kwh
+        self.device_daily_consumption_kwh[device_name] = (
+            self.device_daily_consumption_kwh.get(device_name, 0.0) + consumption_kwh
+        )
+        self.total_daily_consumption_kwh += consumption_kwh
+        self.last_hour_consumption_kwh = round(sum(slot_data.values()), 3)
 
     def generate_temperature(self, hour):
         """Generate realistic temperature variations with smooth transitions."""
@@ -106,6 +135,12 @@ class WorldAgent(Agent):
             "energy_price": self.generate_electricity_price(self.current_hour),
             "season": self.season,
             "day": self.day_count,
+            "hourly_consumption_total_kwh": round(self.last_hour_consumption_kwh, 3),
+            "daily_consumption_total_kwh": round(self.total_daily_consumption_kwh, 3),
+            "device_daily_consumption_kwh": {
+                device: round(total, 3)
+                for device, total in self.device_daily_consumption_kwh.items()
+            },
             "simulated": True  # Flag to indicate this is simulated data
         }
     
@@ -135,23 +170,34 @@ class WorldAgent(Agent):
                     if event == "state_changed":
                         self.agent.active_devices[device_name] = state
                         print(f"[WorldAgent] Device '{device_name}' state: {state}")
+                    elif event == "device_consumption":
+                        hour = data.get("hour")
+                        day = data.get("day")
+                        consumption_kwh = float(data.get("consumption_kwh", 0.0))
+                        self.agent.register_device_consumption(
+                            device_name=device_name,
+                            day=day,
+                            hour=hour,
+                            consumption_kwh=consumption_kwh,
+                        )
+
+                        if GUI_AVAILABLE and self.agent.last_world_state:
+                            gui_state = get_simulation_state()
+                            merged_state = self.agent.last_world_state.copy()
+                            merged_state["hourly_consumption_total_kwh"] = round(self.agent.last_hour_consumption_kwh, 3)
+                            merged_state["daily_consumption_total_kwh"] = round(self.agent.total_daily_consumption_kwh, 3)
+                            merged_state["device_daily_consumption_kwh"] = {
+                                device: round(total, 3)
+                                for device, total in self.agent.device_daily_consumption_kwh.items()
+                            }
+                            gui_state.update_world_state(merged_state)
                 except (json.JSONDecodeError, KeyError) as e:
                     pass  # Ignore invalid messages
 
     class WorldSimulationBehaviour(PeriodicBehaviour):
         """Behavior that simulates world conditions and broadcasts them."""
         async def run(self):
-            # Advance time
-            self.agent.current_hour = (self.agent.current_hour + 1) % 24
-
-            # New day started
-            if self.agent.current_hour == 0:
-                self.agent.day_count += 1
-                print("\n" + "="*60)
-                print(f"NEW SIMULATED DAY {self.agent.day_count} ({self.agent.season.upper()})")
-                print("="*60)
-
-            # Generate world state (natural temperature first)
+            # Simulate current hour state first, then advance to the next hour.
             state = self.agent.generate_world_state()
 
             # Apply device effects AFTER natural temp calculation
@@ -159,11 +205,14 @@ class WorldAgent(Agent):
 
             # Update state with modified temperature after device effects
             state["temperature"] = round(self.agent.current_temperature, 1)
+            self.agent.last_world_state = state.copy()
 
             # Log current conditions
             active_info = f" | Active devices: {', '.join(self.agent.active_devices.keys())}" if self.agent.active_devices else ""
             print(f"[WorldAgent] {state['hour']:02d}:00 | Temp: {state['temperature']}°C | "
-                  f"Solar: {state['solar_production']}kW | Price: {state['energy_price']}€{active_info}")
+                  f"Solar: {state['solar_production']}kW | Price: {state['energy_price']}€ | "
+                  f"Last hour: {state['hourly_consumption_total_kwh']}kWh | "
+                  f"Day total: {state['daily_consumption_total_kwh']}kWh{active_info}")
 
             # Update GUI state
             if GUI_AVAILABLE:
@@ -175,6 +224,25 @@ class WorldAgent(Agent):
                 msg = Message(to=receiver_jid)
                 msg.body = json.dumps(state)
                 await self.send(msg)
+
+            # Advance hour after processing the current interval.
+            self.agent.current_hour = (self.agent.current_hour + 1) % 24
+
+            # At 00:00, close previous day and reset counters for the new day.
+            if self.agent.current_hour == 0:
+                print("\n" + "=" * 60)
+                print(
+                    f"DAY {self.agent.day_count} SUMMARY | "
+                    f"Total consumption: {self.agent.total_daily_consumption_kwh:.3f} kWh"
+                )
+                print("=" * 60)
+
+                self.agent.day_count += 1
+                self.agent.reset_daily_energy_totals()
+
+                print("\n" + "=" * 60)
+                print(f"NEW SIMULATED DAY {self.agent.day_count} ({self.agent.season.upper()})")
+                print("=" * 60)
 
     async def setup(self):
         print(f"WorldAgent [{self.name}] starting simulation...")

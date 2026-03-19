@@ -13,7 +13,9 @@ class SimulationState:
             "solar_production": 0,
             "energy_price": 0,
             "season": "winter",
-            "day": 1
+            "day": 1,
+            "hourly_consumption_total_kwh": 0,
+            "daily_consumption_total_kwh": 0,
         }
         self.devices = {}
 
@@ -110,7 +112,7 @@ class SimulationGUI:
         self.solar_label = ttk.Label(info_frame, text="-- kW", style="Value.TLabel")
         self.solar_label.grid(row=1, column=3, sticky=tk.W, padx=5)
 
-        # Row 3: Price
+        # Row 3: Price and day
         ttk.Label(info_frame, text="💰 Energy Price:", style="Heading.TLabel").grid(row=2, column=0, sticky=tk.W, padx=5, pady=5)
         self.price_label = ttk.Label(info_frame, text="-- €/kWh", style="Value.TLabel")
         self.price_label.grid(row=2, column=1, sticky=tk.W, padx=5, pady=5)
@@ -118,6 +120,15 @@ class SimulationGUI:
         ttk.Label(info_frame, text="📅 Day:", style="Heading.TLabel").grid(row=2, column=2, sticky=tk.W, padx=5, pady=5)
         self.day_label = ttk.Label(info_frame, text="--", style="Value.TLabel")
         self.day_label.grid(row=2, column=3, sticky=tk.W, padx=5, pady=5)
+
+        # Row 4: Energy consumption
+        ttk.Label(info_frame, text="⚡ Last Hour Consumption:", style="Heading.TLabel").grid(row=3, column=0, sticky=tk.W, padx=5, pady=5)
+        self.hourly_consumption_label = ttk.Label(info_frame, text="-- kWh", style="Value.TLabel")
+        self.hourly_consumption_label.grid(row=3, column=1, sticky=tk.W, padx=5, pady=5)
+
+        ttk.Label(info_frame, text="📊 Daily Total Consumption:", style="Heading.TLabel").grid(row=3, column=2, sticky=tk.W, padx=5, pady=5)
+        self.daily_consumption_label = ttk.Label(info_frame, text="-- kWh", style="Value.TLabel")
+        self.daily_consumption_label.grid(row=3, column=3, sticky=tk.W, padx=5, pady=5)
 
     def create_devices_panel(self, parent):
         """Create devices display panel."""
@@ -161,6 +172,12 @@ class SimulationGUI:
             info["target"] = ttk.Label(device_frame, text="Target Temp: -- °C", style="Heading.TLabel")
             info["target"].pack(anchor=tk.W, pady=2)
 
+            info["power"] = ttk.Label(device_frame, text="Power: -- kW", style="Heading.TLabel")
+            info["power"].pack(anchor=tk.W, pady=2)
+
+            info["consumption"] = ttk.Label(device_frame, text="Hourly: -- kWh | Daily: -- kWh", style="Info.TLabel")
+            info["consumption"].pack(anchor=tk.W, pady=2)
+
             info["comfort"] = ttk.Label(device_frame, text="Comfort: ----", style="Info.TLabel")
             info["comfort"].pack(anchor=tk.W, pady=2)
 
@@ -173,6 +190,12 @@ class SimulationGUI:
 
             info["target"] = ttk.Label(device_frame, text="Target Temp: -- °C", style="Heading.TLabel")
             info["target"].pack(anchor=tk.W, pady=2)
+
+            info["power"] = ttk.Label(device_frame, text="Power: -- kW", style="Heading.TLabel")
+            info["power"].pack(anchor=tk.W, pady=2)
+
+            info["consumption"] = ttk.Label(device_frame, text="Hourly: -- kWh | Daily: -- kWh", style="Info.TLabel")
+            info["consumption"].pack(anchor=tk.W, pady=2)
 
         self.device_frames[device_name] = {
             "frame": device_frame,
@@ -192,6 +215,8 @@ class SimulationGUI:
         self.solar_label.config(text=f"{world.get('solar_production', 0):.2f} kW")
         self.price_label.config(text=f"{world.get('energy_price', 0):.3f} €/kWh")
         self.day_label.config(text=f"Day {world.get('day', 0)}")
+        self.hourly_consumption_label.config(text=f"{world.get('hourly_consumption_total_kwh', 0):.3f} kWh")
+        self.daily_consumption_label.config(text=f"{world.get('daily_consumption_total_kwh', 0):.3f} kWh")
 
         # Update device states
         for device_name in self.state.get_all_devices():
@@ -208,6 +233,9 @@ class SimulationGUI:
                 current_temp = device_state.get("current_temp", 0)
                 target_temp = device_state.get("target_temp", 0)
                 temp_margin = device_state.get("temp_margin", 0)
+                power_kw = device_state.get("power_kw", 0)
+                hourly_consumption_kwh = device_state.get("hourly_consumption_kwh", 0)
+                daily_consumption_kwh = device_state.get("daily_consumption_kwh", 0)
 
                 # Update labels
                 device_info["labels"]["status"].config(
@@ -218,6 +246,12 @@ class SimulationGUI:
                 )
                 device_info["labels"]["target"].config(
                     text=f"Target Temp: {target_temp:.1f} °C ±{temp_margin:.1f}°C"
+                )
+                device_info["labels"]["power"].config(
+                    text=f"Power: {power_kw:.2f} kW"
+                )
+                device_info["labels"]["consumption"].config(
+                    text=f"Hourly: {hourly_consumption_kwh:.3f} kWh | Daily: {daily_consumption_kwh:.3f} kWh"
                 )
 
                 # Calculate comfort level
@@ -233,6 +267,9 @@ class SimulationGUI:
                 current_temp = device_state.get("current_temp", 0)
                 target_temp = device_state.get("target_temp", 0)
                 temp_margin = device_state.get("temp_margin", 0)
+                power_kw = device_state.get("power_kw", 0)
+                hourly_consumption_kwh = device_state.get("hourly_consumption_kwh", 0)
+                daily_consumption_kwh = device_state.get("daily_consumption_kwh", 0)
 
                 # Update labels
                 device_info["labels"]["status"].config(
@@ -243,6 +280,12 @@ class SimulationGUI:
                 )
                 device_info["labels"]["target"].config(
                     text=f"Target Temp: {target_temp:.1f} °C ±{temp_margin:.1f}°C"
+                )
+                device_info["labels"]["power"].config(
+                    text=f"Power: {power_kw:.2f} kW"
+                )
+                device_info["labels"]["consumption"].config(
+                    text=f"Hourly: {hourly_consumption_kwh:.3f} kWh | Daily: {daily_consumption_kwh:.3f} kWh"
                 )
 
         # Schedule next update
