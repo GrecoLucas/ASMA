@@ -10,7 +10,6 @@ from agents.device_base import Device, Rule
 __all__ = [
     "Rule",
     "Device",
-    "TemperatureSensor",
     "AirConditioner",
     "Refrigerator",
 ]
