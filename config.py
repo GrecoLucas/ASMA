@@ -15,3 +15,4 @@ AGENTS = {
 
 # Simulation 
 SIMULATION_SPEED = 2
+MINUTES_PER_STEP = 60

@@ -2,6 +2,8 @@ import tkinter as tk
 from tkinter import ttk
 import json
 from threading import Lock
+from ui.log_ui import LogPanel
+from ui.agents_ui import DevicesPanel
 
 class SimulationState:
     """Thread-safe storage for simulation state."""
@@ -90,7 +92,7 @@ class SimulationGUI:
     def create_widgets(self):
         """Create main GUI widgets."""
         # Title outside the paned window
-        title = ttk.Label(self.root, text="🏠 Smart Home Energy Management System", style="Title.TLabel")
+        title = ttk.Label(self.root, text="Smart Home Energy Management System", style="Title.TLabel")
         title.pack(pady=10)
 
         # PanedWindow for Left/Right separation
@@ -109,26 +111,14 @@ class SimulationGUI:
         self.create_world_panel(left_frame)
 
         # Devices Panel
-        self.create_devices_panel(left_frame)
+        self.devices_panel = DevicesPanel(left_frame)
         
         # Logs Panel
-        self.create_log_panel(right_frame)
-
-    def create_log_panel(self, parent):
-        """Create log display panel."""
-        log_frame = ttk.LabelFrame(parent, text="💬 Agent Messages", padding=10)
-        log_frame.pack(fill=tk.BOTH, expand=True)
-
-        self.log_text = tk.Text(log_frame, bg="#2d2d2d", fg="#00ff88", font=("Courier", 9), state=tk.DISABLED, wrap=tk.WORD)
-        scrollbar = ttk.Scrollbar(log_frame, orient=tk.VERTICAL, command=self.log_text.yview)
-        self.log_text.configure(yscrollcommand=scrollbar.set)
-
-        self.log_text.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+        self.log_panel = LogPanel(right_frame)
 
     def create_world_panel(self, parent):
         """Create world state display panel."""
-        world_frame = ttk.LabelFrame(parent, text="🌍 World State", padding=10)
+        world_frame = ttk.LabelFrame(parent, text="World State", padding=10)
         world_frame.pack(fill=tk.X, pady=(0, 15))
 
         # Create a grid for world info
@@ -140,110 +130,33 @@ class SimulationGUI:
         self.time_label.grid(row=0, column=0, columnspan=4, sticky=tk.W, pady=5)
 
         # Row 2: Environmental data
-        ttk.Label(info_frame, text="🌡️ Temperature:", style="Heading.TLabel").grid(row=1, column=0, sticky=tk.W, padx=5)
+        ttk.Label(info_frame, text="Temperature:", style="Heading.TLabel").grid(row=1, column=0, sticky=tk.W, padx=5)
         self.temp_label = ttk.Label(info_frame, text="-- °C", style="Value.TLabel")
         self.temp_label.grid(row=1, column=1, sticky=tk.W, padx=5)
 
-        ttk.Label(info_frame, text="☀️ Solar Production:", style="Heading.TLabel").grid(row=1, column=2, sticky=tk.W, padx=5)
+        ttk.Label(info_frame, text="Solar Production:", style="Heading.TLabel").grid(row=1, column=2, sticky=tk.W, padx=5)
         self.solar_label = ttk.Label(info_frame, text="-- kW", style="Value.TLabel")
         self.solar_label.grid(row=1, column=3, sticky=tk.W, padx=5)
 
         # Row 3: Price and day
-        ttk.Label(info_frame, text="💰 Energy Price:", style="Heading.TLabel").grid(row=2, column=0, sticky=tk.W, padx=5, pady=5)
+        ttk.Label(info_frame, text="Energy Price:", style="Heading.TLabel").grid(row=2, column=0, sticky=tk.W, padx=5, pady=5)
         self.price_label = ttk.Label(info_frame, text="-- €/kWh", style="Value.TLabel")
         self.price_label.grid(row=2, column=1, sticky=tk.W, padx=5, pady=5)
 
-        ttk.Label(info_frame, text="📅 Day:", style="Heading.TLabel").grid(row=2, column=2, sticky=tk.W, padx=5, pady=5)
+        ttk.Label(info_frame, text="Day:", style="Heading.TLabel").grid(row=2, column=2, sticky=tk.W, padx=5, pady=5)
         self.day_label = ttk.Label(info_frame, text="--", style="Value.TLabel")
         self.day_label.grid(row=2, column=3, sticky=tk.W, padx=5, pady=5)
 
         # Row 4: Energy consumption
-        ttk.Label(info_frame, text="⚡ Last Hour Consumption:", style="Heading.TLabel").grid(row=3, column=0, sticky=tk.W, padx=5, pady=5)
+        ttk.Label(info_frame, text="Last Hour Consumption:", style="Heading.TLabel").grid(row=3, column=0, sticky=tk.W, padx=5, pady=5)
         self.hourly_consumption_label = ttk.Label(info_frame, text="-- kWh", style="Value.TLabel")
         self.hourly_consumption_label.grid(row=3, column=1, sticky=tk.W, padx=5, pady=5)
 
-        ttk.Label(info_frame, text="📊 Daily Total Consumption:", style="Heading.TLabel").grid(row=3, column=2, sticky=tk.W, padx=5, pady=5)
+        ttk.Label(info_frame, text="Daily Total Consumption:", style="Heading.TLabel").grid(row=3, column=2, sticky=tk.W, padx=5, pady=5)
         self.daily_consumption_label = ttk.Label(info_frame, text="-- kWh", style="Value.TLabel")
         self.daily_consumption_label.grid(row=3, column=3, sticky=tk.W, padx=5, pady=5)
 
-    def create_devices_panel(self, parent):
-        """Create devices display panel."""
-        devices_frame = ttk.LabelFrame(parent, text="⚙️ Devices", padding=10)
-        devices_frame.pack(fill=tk.BOTH, expand=True)
 
-        # Scrollable frame for devices
-        canvas = tk.Canvas(devices_frame, bg="#1e1e1e", highlightthickness=0)
-        scrollbar = ttk.Scrollbar(devices_frame, orient=tk.VERTICAL, command=canvas.yview)
-        scrollable_frame = ttk.Frame(canvas)
-
-        scrollable_frame.bind(
-            "<Configure>",
-            lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
-        )
-
-        canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
-        canvas.configure(yscrollcommand=scrollbar.set)
-
-        self.devices_container = scrollable_frame
-        canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
-
-        self.device_frames = {}
-
-    def add_device_frame(self, device_name, device_type):
-        """Add a device display frame."""
-        device_frame = ttk.LabelFrame(self.devices_container, text=f"🔧 {device_name.title()}", padding=10)
-        device_frame.pack(fill=tk.X, pady=5)
-
-        # Device info labels
-        info = {}
-
-        if device_type == "air_conditioner":
-            info["priority"] = ttk.Label(device_frame, text="Priority: --", style="Info.TLabel")
-            info["priority"].pack(anchor=tk.W, pady=2)
-
-            info["status"] = ttk.Label(device_frame, text="Status: --", style="Heading.TLabel")
-            info["status"].pack(anchor=tk.W, pady=2)
-
-            info["temp"] = ttk.Label(device_frame, text="Current Temp: -- °C", style="Heading.TLabel")
-            info["temp"].pack(anchor=tk.W, pady=2)
-
-            info["target"] = ttk.Label(device_frame, text="Target Temp: -- °C", style="Heading.TLabel")
-            info["target"].pack(anchor=tk.W, pady=2)
-
-            info["power"] = ttk.Label(device_frame, text="Power: -- kW", style="Heading.TLabel")
-            info["power"].pack(anchor=tk.W, pady=2)
-
-            info["consumption"] = ttk.Label(device_frame, text="Hourly: -- kWh | Daily: -- kWh", style="Info.TLabel")
-            info["consumption"].pack(anchor=tk.W, pady=2)
-
-            info["comfort"] = ttk.Label(device_frame, text="Comfort: ----", style="Info.TLabel")
-            info["comfort"].pack(anchor=tk.W, pady=2)
-
-        elif device_type == "refrigerator":
-            info["priority"] = ttk.Label(device_frame, text="Priority: --", style="Info.TLabel")
-            info["priority"].pack(anchor=tk.W, pady=2)
-
-            info["status"] = ttk.Label(device_frame, text="Compressor: --", style="Heading.TLabel")
-            info["status"].pack(anchor=tk.W, pady=2)
-
-            info["temp"] = ttk.Label(device_frame, text="Interior Temp: -- °C", style="Heading.TLabel")
-            info["temp"].pack(anchor=tk.W, pady=2)
-
-            info["target"] = ttk.Label(device_frame, text="Target Temp: -- °C", style="Heading.TLabel")
-            info["target"].pack(anchor=tk.W, pady=2)
-
-            info["power"] = ttk.Label(device_frame, text="Power: -- kW", style="Heading.TLabel")
-            info["power"].pack(anchor=tk.W, pady=2)
-
-            info["consumption"] = ttk.Label(device_frame, text="Hourly: -- kWh | Daily: -- kWh", style="Info.TLabel")
-            info["consumption"].pack(anchor=tk.W, pady=2)
-
-        self.device_frames[device_name] = {
-            "frame": device_frame,
-            "labels": info,
-            "type": device_type
-        }
 
     def update_display(self):
         """Update the GUI with current state data."""
@@ -262,89 +175,12 @@ class SimulationGUI:
         self.daily_consumption_label.config(text=f"{world.get('daily_consumption_total_kwh') or 0.0:.3f} kWh")
 
         # Update device states
-        for device_name in self.state.get_all_devices():
-            if device_name not in self.device_frames:
-                device_state = self.state.get_device_state(device_name)
-                device_type = device_state.get("device_type", "unknown") if device_state else "unknown"
-                self.add_device_frame(device_name, device_type)
-
-            device_state = self.state.get_device_state(device_name)
-            device_info = self.device_frames[device_name]
-
-            if device_info["type"] == "air_conditioner":
-                status = device_state.get("ac_status", "Unknown")
-                current_temp = device_state.get("current_temp") or 0.0
-                target_temp = device_state.get("target_temp") or 0.0
-                temp_margin = device_state.get("temp_margin") or 0.0
-                power_kw = device_state.get("power_kw") or 0.0
-                hourly_consumption_kwh = device_state.get("hourly_consumption_kwh") or 0.0
-                daily_consumption_kwh = device_state.get("daily_consumption_kwh") or 0.0
-
-                priority = device_state.get("priority", "-")
-
-                # Update labels
-                device_info["labels"]["priority"].config(text=f"Priority: {priority}")
-                device_info["labels"]["status"].config(
-                    text=f"Status: {'🟢 ON' if status == 'ON' else '🔴 OFF'}"
-                )
-                device_info["labels"]["temp"].config(
-                    text=f"Current Temp: {current_temp:.1f} °C"
-                )
-                device_info["labels"]["target"].config(
-                    text=f"Target Temp: {target_temp:.1f} °C ±{temp_margin:.1f}°C"
-                )
-                device_info["labels"]["power"].config(
-                    text=f"Power: {power_kw:.2f} kW"
-                )
-                device_info["labels"]["consumption"].config(
-                    text=f"Hourly: {hourly_consumption_kwh:.3f} kWh | Daily: {daily_consumption_kwh:.3f} kWh"
-                )
-
-                # Calculate comfort level
-                if current_temp >= target_temp - temp_margin and current_temp <= target_temp + temp_margin:
-                    comfort = "✅ Comfortable"
-                else:
-                    comfort = "❌ Outside range"
-
-                device_info["labels"]["comfort"].config(text=f"Comfort: {comfort}")
-
-            elif device_info["type"] == "refrigerator":
-                status = device_state.get("compressor_status", "Unknown")
-                current_temp = device_state.get("current_temp") or 0.0
-                target_temp = device_state.get("target_temp") or 0.0
-                temp_margin = device_state.get("temp_margin") or 0.0
-                power_kw = device_state.get("power_kw") or 0.0
-                hourly_consumption_kwh = device_state.get("hourly_consumption_kwh") or 0.0
-                daily_consumption_kwh = device_state.get("daily_consumption_kwh") or 0.0
-
-                priority = device_state.get("priority", "-")
-
-                # Update labels
-                device_info["labels"]["priority"].config(text=f"Priority: {priority}")
-                device_info["labels"]["status"].config(
-                    text=f"Compressor: {'🟢 RUNNING' if status == 'RUNNING' else '🔴 IDLE'}"
-                )
-                device_info["labels"]["temp"].config(
-                    text=f"Interior Temp: {current_temp:.1f} °C"
-                )
-                device_info["labels"]["target"].config(
-                    text=f"Target Temp: {target_temp:.1f} °C ±{temp_margin:.1f}°C"
-                )
-                device_info["labels"]["power"].config(
-                    text=f"Power: {power_kw:.2f} kW"
-                )
-                device_info["labels"]["consumption"].config(
-                    text=f"Hourly: {hourly_consumption_kwh:.3f} kWh | Daily: {daily_consumption_kwh:.3f} kWh"
-                )
+        self.devices_panel.update_devices(self.state)
 
         # Update logs
         messages = self.state.get_messages()
-        if hasattr(self, 'log_text'):
-            self.log_text.config(state=tk.NORMAL)
-            self.log_text.delete(1.0, tk.END)
-            self.log_text.insert(tk.END, "\n".join(messages))
-            self.log_text.see(tk.END)
-            self.log_text.config(state=tk.DISABLED)
+        if hasattr(self, 'log_panel'):
+            self.log_panel.update_logs(messages)
 
         # Schedule next update
         self.root.after(1000, self.update_display)

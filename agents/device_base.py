@@ -130,8 +130,9 @@ class Device(Agent):
         return self.idle_power_kw
 
     def get_hourly_consumption_kwh(self, world_state):
-        """For 15-minute simulation steps, kWh equals a quarter of current kW draw."""
-        return round(self.get_power_consumption_kw() * 0.25, 3)
+        """For configurable simulation steps, kWh equals a fraction of current kW draw."""
+        from config import MINUTES_PER_STEP
+        return round(self.get_power_consumption_kw() * (MINUTES_PER_STEP / 60.0), 3)
 
     def get_operating_state(self):
         """Return state name used in logs and world notifications."""

@@ -4,7 +4,7 @@ import random
 from spade.agent import Agent
 from spade.behaviour import CyclicBehaviour, PeriodicBehaviour
 from spade.message import Message
-from config import AGENTS, PASSWORD, SIMULATION_SPEED
+from config import AGENTS, PASSWORD, SIMULATION_SPEED, MINUTES_PER_STEP
 
 # Import GUI state if available
 try:
@@ -153,13 +153,13 @@ class WorldAgent(Agent):
         """Apply temperature effects from active devices."""
         # AC cooling effect
         if self.active_devices.get("ac.livingroom") == "ON":
-            # AC cools the environment gradually, reduced to 15m scale
-            self.current_temperature -= 0.8 / 4.0
+            # AC cools the environment gradually, reduced to step scale
+            self.current_temperature -= 0.8 * (MINUTES_PER_STEP / 60.0)
             print(f"[WorldAgent] AC is ON: cooling effect applied (now {self.current_temperature:.1f}°C)")
 
         # Fridge cooling effect (minor, mostly contained)
         if self.active_devices.get("fridge") == "ON":
-            self.current_temperature += 0.1 / 4.0
+            self.current_temperature += 0.1 * (MINUTES_PER_STEP / 60.0)
 
     class DeviceStateListener(CyclicBehaviour):
         """Listen for device state change messages."""
@@ -232,8 +232,8 @@ class WorldAgent(Agent):
                 msg.body = json.dumps(state)
                 await self.send(msg)
 
-            # Advance 15 minutes
-            self.agent.clock_minutes += 15
+            # Advance time step
+            self.agent.clock_minutes += MINUTES_PER_STEP
 
             # At midnight (1440 mins), close previous day and reset counters.
             if self.agent.clock_minutes >= 1440:
