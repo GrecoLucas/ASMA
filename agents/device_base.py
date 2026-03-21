@@ -52,14 +52,17 @@ class Rule:
 class Device(Agent):
     """Base class for device agents with sensors, actuators, relations, and energy accounting."""
 
-    def __init__(self, jid, password, device_type="generic"):
+    def __init__(self, jid, password, device_type="generic", peers=None, priority=10):
         super().__init__(jid, password)
         self.device_type = device_type
+        self.peers = peers or []
+        self.priority = priority
         self.sensors = {}
         self.actuators = {}
         self.relations = {}
         self.rules = []
         self.status = "idle"
+        self.shed_timeout = 0
 
         # Energy model values in kW
         self.active_power_kw = 0.0
@@ -92,6 +95,9 @@ class Device(Agent):
             condition_met = rule.evaluate(sensor_value)
 
             if condition_met and not rule.last_triggered:
+                if rule.command == "on" and self.shed_timeout > 0:
+                    continue  # Under shedding penalty, cannot turn on right now
+
                 self.actuate(rule.actuator_name, rule.command)
                 result = (rule, True, f"Activated: {rule.command}", True)
                 rule.last_triggered = True
@@ -124,8 +130,8 @@ class Device(Agent):
         return self.idle_power_kw
 
     def get_hourly_consumption_kwh(self, world_state):
-        """For one-hour simulation steps, kWh equals current kW draw for that step."""
-        return round(self.get_power_consumption_kw(), 3)
+        """For 15-minute simulation steps, kWh equals a quarter of current kW draw."""
+        return round(self.get_power_consumption_kw() * 0.25, 3)
 
     def get_operating_state(self):
         """Return state name used in logs and world notifications."""
@@ -151,7 +157,8 @@ class Device(Agent):
 
     def get_log_info(self, world_state):
         hour = world_state.get("hour", 0)
-        return f"Hour: {hour:02d}h"
+        minute = world_state.get("minute", 0)
+        return f"Time: {hour:02d}:{minute:02d}"
 
     class MonitorEnvironment(CyclicBehaviour):
         """Generic behavior that monitors environment and controls device using rules."""
@@ -161,6 +168,9 @@ class Device(Agent):
             if msg:
                 try:
                     world_state = json.loads(msg.body)
+                    
+                    if self.agent.shed_timeout > 0:
+                        self.agent.shed_timeout -= 1
 
                     self.agent.update_sensors(world_state)
 
@@ -181,6 +191,7 @@ class Device(Agent):
                         "event": "device_consumption",
                         "device_name": device_name,
                         "hour": world_state.get("hour"),
+                        "minute": world_state.get("minute", 0),
                         "day": world_state.get("day"),
                         "power_kw": self.agent.get_power_consumption_kw(),
                         "consumption_kwh": self.agent.hourly_consumption_kwh,
@@ -192,6 +203,24 @@ class Device(Agent):
                     if state_changed_rules:
                         for rule in state_changed_rules:
                             print(f"[{self.agent.name}] [OK] {rule.name}: {rule.command.upper()}")
+
+                            # Se ligar, envia Broadcast de Intenção aos Peers (Negociação)
+                            if rule.command == "on" and self.agent.peers:
+                                for peer_jid in self.agent.peers:
+                                    peer_msg = Message(to=peer_jid)
+                                    peer_msg.set_metadata("performative", "inform")
+                                    peer_msg.set_metadata("ontology", "p2p")
+                                    peer_msg.body = json.dumps({
+                                        "event": "power_request",
+                                        "priority": self.agent.priority,
+                                        "power_kw": self.agent.active_power_kw
+                                    })
+                                    await self.send(peer_msg)
+                                    
+                                    if GUI_AVAILABLE:
+                                        state = get_simulation_state()
+                                        state.add_message(self.agent.name.split("@")[0], peer_jid.split("@")[0], "POWER REQUEST (I want to turn ON)")
+
                             notify_msg = Message(to=AGENTS["world"])
                             notify_msg.body = json.dumps({
                                 "event": "state_changed",
@@ -210,13 +239,66 @@ class Device(Agent):
                 except (json.JSONDecodeError, KeyError) as e:
                     print(f"[{self.agent.name}] Error parsing message: {e}")
 
+    class PeerCommunicationBehaviour(CyclicBehaviour):
+        """Escuta pedidos de peers e, se tiver menor prioridade, liberta carga (Shedding)."""
+        async def run(self):
+            msg = await self.receive(timeout=10)
+            if msg:
+                try:
+                    data = json.loads(msg.body)
+                    if data.get("event") == "power_request":
+                        req_priority = data.get("priority")
+                        req_kw = data.get("power_kw")
+                        current_power_kw = self.agent.get_power_consumption_kw()
+                        
+                        # Se estou ativo e ouço alguem com MAIOR prioridade (número menor)
+                        if current_power_kw > self.agent.idle_power_kw and self.agent.priority > req_priority:
+                            print(f"[{self.agent.name}] CONFLITO P2P: Cedendo energia a {msg.sender} (Shedding)")
+                            
+                            if GUI_AVAILABLE:
+                                state = get_simulation_state()
+                                state.add_message(self.agent.name.split("@")[0], msg.sender.split("@")[0], "YIELDING (Shedding load due to higher priority)")
+                                
+                            self.agent.shed_timeout = 3  # Desativa por 3 ticks do simulador
+                            
+                            # Força o desligamento dos atuadores e reseta Rules
+                            for rule in self.agent.rules:
+                                if rule.command == "off":
+                                    self.agent.actuate(rule.actuator_name, rule.command)
+                                    rule.last_triggered = True
+                                elif rule.command == "on":
+                                    rule.last_triggered = False
+                                    
+                            from config import AGENTS
+                            notify_msg = Message(to=AGENTS["world"])
+                            notify_msg.body = json.dumps({
+                                "event": "state_changed",
+                                "device_name": self.agent.name.split("@")[0],
+                                "state": "OFF (SHED)",
+                            })
+                            await self.send(notify_msg)
+                except Exception as e:
+                    print(f"[{self.agent.name}] P2P Error: {e}")
+
     async def setup(self):
-        print(f"Agent [{self.name}] ({self.device_type.title()}) started.")
+        print(f"Agent [{self.name}] ({self.device_type.title()}) started. P2P priority: {self.priority}")
         if self.rules:
             print(f"  - Rules configured: {len(self.rules)}")
             for rule in self.rules:
                 print(f"    - {rule}")
-        self.add_behaviour(self.MonitorEnvironment())
+                
+        from spade.template import Template
+        from config import AGENTS
+        
+        # Filtro para mensagens do Mundo
+        world_template = Template()
+        world_template.sender = AGENTS["world"]
+        self.add_behaviour(self.MonitorEnvironment(), world_template)
+        
+        # Filtro para mensagens P2P
+        peer_template = Template()
+        peer_template.metadata = {"ontology": "p2p"}
+        self.add_behaviour(self.PeerCommunicationBehaviour(), peer_template)
 
     def __repr__(self):
         return f"Device(name={self.name}, type={self.device_type}, status={self.status})"

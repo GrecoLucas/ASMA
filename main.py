@@ -15,9 +15,12 @@ async def main():
     print("GUI started...")
 
     # 1. Instantiate Device Agents
-    ac_livingroom = AirConditioner(AGENTS["ac_livingroom"], PASSWORD, target_temp=20, temp_margin=2)
-    fridge = Refrigerator(AGENTS["fridge"], PASSWORD, target_temp=4, temp_margin=1)
-    world_agent = WorldAgent(AGENTS["world"], PASSWORD, season="summer", receivers=[AGENTS["ac_livingroom"], AGENTS["fridge"]])
+    ac_jid = AGENTS["ac_livingroom"]
+    fridge_jid = AGENTS["fridge"]
+
+    ac_livingroom = AirConditioner(ac_jid, PASSWORD, target_temp=20, temp_margin=2, peers=[fridge_jid])
+    fridge = Refrigerator(fridge_jid, PASSWORD, target_temp=4, temp_margin=1, peers=[ac_jid])
+    world_agent = WorldAgent(AGENTS["world"], PASSWORD, season="summer", receivers=[ac_jid, fridge_jid])
 
     # Start all agents (devices first, then world broadcaster)
     await ac_livingroom.start(auto_register=True)

@@ -18,6 +18,7 @@ class SimulationState:
             "daily_consumption_total_kwh": 0,
         }
         self.devices = {}
+        self.messages = []
 
     def update_world_state(self, state):
         with self.lock:
@@ -38,6 +39,18 @@ class SimulationState:
     def get_all_devices(self):
         with self.lock:
             return list(self.devices.keys())
+
+    def add_message(self, sender, receiver, content):
+        with self.lock:
+            from datetime import datetime
+            timestamp = datetime.now().strftime("%H:%M:%S")
+            self.messages.append(f"[{timestamp}] {sender} -> {receiver}: {content}")
+            if len(self.messages) > 100:
+                self.messages.pop(0)
+
+    def get_messages(self):
+        with self.lock:
+            return self.messages.copy()
 
 
 class SimulationGUI:
@@ -76,19 +89,42 @@ class SimulationGUI:
 
     def create_widgets(self):
         """Create main GUI widgets."""
-        # Main container
-        main_frame = ttk.Frame(self.root)
-        main_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+        # Title outside the paned window
+        title = ttk.Label(self.root, text="🏠 Smart Home Energy Management System", style="Title.TLabel")
+        title.pack(pady=10)
 
-        # Title
-        title = ttk.Label(main_frame, text="🏠 Smart Home Energy Management System", style="Title.TLabel")
-        title.pack(pady=(0, 15))
+        # PanedWindow for Left/Right separation
+        paned = tk.PanedWindow(self.root, orient=tk.HORIZONTAL)
+        paned.pack(fill=tk.BOTH, expand=True, padx=10, pady=(0, 10))
+
+        # Left Frame
+        left_frame = ttk.Frame(paned)
+        paned.add(left_frame, minsize=400)
+
+        # Right Frame (Logs)
+        right_frame = ttk.Frame(paned)
+        paned.add(right_frame, minsize=350)
 
         # World State Panel
-        self.create_world_panel(main_frame)
+        self.create_world_panel(left_frame)
 
         # Devices Panel
-        self.create_devices_panel(main_frame)
+        self.create_devices_panel(left_frame)
+        
+        # Logs Panel
+        self.create_log_panel(right_frame)
+
+    def create_log_panel(self, parent):
+        """Create log display panel."""
+        log_frame = ttk.LabelFrame(parent, text="💬 Agent Messages", padding=10)
+        log_frame.pack(fill=tk.BOTH, expand=True)
+
+        self.log_text = tk.Text(log_frame, bg="#2d2d2d", fg="#00ff88", font=("Courier", 9), state=tk.DISABLED, wrap=tk.WORD)
+        scrollbar = ttk.Scrollbar(log_frame, orient=tk.VERTICAL, command=self.log_text.yview)
+        self.log_text.configure(yscrollcommand=scrollbar.set)
+
+        self.log_text.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
 
     def create_world_panel(self, parent):
         """Create world state display panel."""
@@ -163,6 +199,9 @@ class SimulationGUI:
         info = {}
 
         if device_type == "air_conditioner":
+            info["priority"] = ttk.Label(device_frame, text="Priority: --", style="Info.TLabel")
+            info["priority"].pack(anchor=tk.W, pady=2)
+
             info["status"] = ttk.Label(device_frame, text="Status: --", style="Heading.TLabel")
             info["status"].pack(anchor=tk.W, pady=2)
 
@@ -182,6 +221,9 @@ class SimulationGUI:
             info["comfort"].pack(anchor=tk.W, pady=2)
 
         elif device_type == "refrigerator":
+            info["priority"] = ttk.Label(device_frame, text="Priority: --", style="Info.TLabel")
+            info["priority"].pack(anchor=tk.W, pady=2)
+
             info["status"] = ttk.Label(device_frame, text="Compressor: --", style="Heading.TLabel")
             info["status"].pack(anchor=tk.W, pady=2)
 
@@ -209,14 +251,15 @@ class SimulationGUI:
         world = self.state.get_world_state()
 
         hour = world.get("hour", 0)
+        minute = world.get("minute", 0)
         season = world.get("season", "unknown").title()
-        self.time_label.config(text=f"Time: {hour:02d}:00 | Season: {season}")
-        self.temp_label.config(text=f"{world.get('temperature', 0):.1f} °C")
-        self.solar_label.config(text=f"{world.get('solar_production', 0):.2f} kW")
-        self.price_label.config(text=f"{world.get('energy_price', 0):.3f} €/kWh")
-        self.day_label.config(text=f"Day {world.get('day', 0)}")
-        self.hourly_consumption_label.config(text=f"{world.get('hourly_consumption_total_kwh', 0):.3f} kWh")
-        self.daily_consumption_label.config(text=f"{world.get('daily_consumption_total_kwh', 0):.3f} kWh")
+        self.time_label.config(text=f"Time: {hour:02d}:{minute:02d} | Season: {season}")
+        self.temp_label.config(text=f"{world.get('temperature') or 0.0:.1f} °C")
+        self.solar_label.config(text=f"{world.get('solar_production') or 0.0:.2f} kW")
+        self.price_label.config(text=f"{world.get('energy_price') or 0.0:.3f} €/kWh")
+        self.day_label.config(text=f"Day {world.get('day') or 0}")
+        self.hourly_consumption_label.config(text=f"{world.get('hourly_consumption_total_kwh') or 0.0:.3f} kWh")
+        self.daily_consumption_label.config(text=f"{world.get('daily_consumption_total_kwh') or 0.0:.3f} kWh")
 
         # Update device states
         for device_name in self.state.get_all_devices():
@@ -230,14 +273,17 @@ class SimulationGUI:
 
             if device_info["type"] == "air_conditioner":
                 status = device_state.get("ac_status", "Unknown")
-                current_temp = device_state.get("current_temp", 0)
-                target_temp = device_state.get("target_temp", 0)
-                temp_margin = device_state.get("temp_margin", 0)
-                power_kw = device_state.get("power_kw", 0)
-                hourly_consumption_kwh = device_state.get("hourly_consumption_kwh", 0)
-                daily_consumption_kwh = device_state.get("daily_consumption_kwh", 0)
+                current_temp = device_state.get("current_temp") or 0.0
+                target_temp = device_state.get("target_temp") or 0.0
+                temp_margin = device_state.get("temp_margin") or 0.0
+                power_kw = device_state.get("power_kw") or 0.0
+                hourly_consumption_kwh = device_state.get("hourly_consumption_kwh") or 0.0
+                daily_consumption_kwh = device_state.get("daily_consumption_kwh") or 0.0
+
+                priority = device_state.get("priority", "-")
 
                 # Update labels
+                device_info["labels"]["priority"].config(text=f"Priority: {priority}")
                 device_info["labels"]["status"].config(
                     text=f"Status: {'🟢 ON' if status == 'ON' else '🔴 OFF'}"
                 )
@@ -264,14 +310,17 @@ class SimulationGUI:
 
             elif device_info["type"] == "refrigerator":
                 status = device_state.get("compressor_status", "Unknown")
-                current_temp = device_state.get("current_temp", 0)
-                target_temp = device_state.get("target_temp", 0)
-                temp_margin = device_state.get("temp_margin", 0)
-                power_kw = device_state.get("power_kw", 0)
-                hourly_consumption_kwh = device_state.get("hourly_consumption_kwh", 0)
-                daily_consumption_kwh = device_state.get("daily_consumption_kwh", 0)
+                current_temp = device_state.get("current_temp") or 0.0
+                target_temp = device_state.get("target_temp") or 0.0
+                temp_margin = device_state.get("temp_margin") or 0.0
+                power_kw = device_state.get("power_kw") or 0.0
+                hourly_consumption_kwh = device_state.get("hourly_consumption_kwh") or 0.0
+                daily_consumption_kwh = device_state.get("daily_consumption_kwh") or 0.0
+
+                priority = device_state.get("priority", "-")
 
                 # Update labels
+                device_info["labels"]["priority"].config(text=f"Priority: {priority}")
                 device_info["labels"]["status"].config(
                     text=f"Compressor: {'🟢 RUNNING' if status == 'RUNNING' else '🔴 IDLE'}"
                 )
@@ -287,6 +336,15 @@ class SimulationGUI:
                 device_info["labels"]["consumption"].config(
                     text=f"Hourly: {hourly_consumption_kwh:.3f} kWh | Daily: {daily_consumption_kwh:.3f} kWh"
                 )
+
+        # Update logs
+        messages = self.state.get_messages()
+        if hasattr(self, 'log_text'):
+            self.log_text.config(state=tk.NORMAL)
+            self.log_text.delete(1.0, tk.END)
+            self.log_text.insert(tk.END, "\n".join(messages))
+            self.log_text.see(tk.END)
+            self.log_text.config(state=tk.DISABLED)
 
         # Schedule next update
         self.root.after(1000, self.update_display)

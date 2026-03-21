@@ -36,8 +36,8 @@ class ACActuatorComponent:
 class AirConditioner(Device):
     """Air conditioner device agent with temperature sensor and rule-based actuator control."""
 
-    def __init__(self, jid, password, target_temp=22, temp_margin=2):
-        super().__init__(jid, password, device_type="air_conditioner")
+    def __init__(self, jid, password, target_temp=22, temp_margin=2, peers=None):
+        super().__init__(jid, password, device_type="air_conditioner", peers=peers, priority=5)
         self.target_temp = target_temp
         self.temp_margin = temp_margin
         self.current_temp = None
@@ -92,6 +92,7 @@ class AirConditioner(Device):
         ac_actuator = self.actuators["ac_switch"]
         return {
             "device_type": "air_conditioner",
+            "priority": self.priority,
             "ac_status": ac_actuator.get_state(),
             "current_temp": self.current_temp,
             "target_temp": self.target_temp,
@@ -103,11 +104,12 @@ class AirConditioner(Device):
 
     def get_log_info(self, world_state):
         hour = world_state.get("hour", 0)
+        minute = world_state.get("minute", 0)
         ac_actuator = self.actuators["ac_switch"]
         current_state = ac_actuator.get_state()
         power = self.get_power_consumption_kw()
         return (
-            f"Hour: {hour:02d}h | Temp: {self.current_temp}°C | AC: {current_state} | "
+            f"Time: {hour:02d}:{minute:02d} | Temp: {self.current_temp}°C | AC: {current_state} | "
             f"Power: {power:.2f} kW | Daily: {self.daily_consumption_kwh:.2f} kWh"
         )
 

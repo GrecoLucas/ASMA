@@ -18,7 +18,7 @@ class WorldAgent(Agent):
         super().__init__(jid, password)
         self.season = season.lower()
         self.receivers = receivers or []
-        self.current_hour = 0
+        self.clock_minutes = 0
         self.day_count = 1
         self.active_devices = {}  # Track active devices and their effects
         self.device_daily_consumption_kwh = {}
@@ -46,12 +46,12 @@ class WorldAgent(Agent):
         self.total_daily_consumption_kwh = 0.0
         self.last_hour_consumption_kwh = 0.0
 
-    def register_device_consumption(self, device_name, day, hour, consumption_kwh):
-        """Register hourly consumption from a device, de-duplicated by (day, hour, device)."""
+    def register_device_consumption(self, device_name, day, hour, minute, consumption_kwh):
+        """Register step consumption from a device, de-duplicated by (day, hour, minute, device)."""
         if day != self.day_count:
             return
 
-        slot_key = (day, hour)
+        slot_key = (day, hour, minute)
         slot_data = self.hourly_consumption_by_slot.setdefault(slot_key, {})
 
         if device_name in slot_data:
@@ -128,11 +128,16 @@ class WorldAgent(Agent):
 
     def generate_world_state(self):
         """Generate current world state data."""
+        hour = self.clock_minutes // 60
+        minute = self.clock_minutes % 60
+        float_hour = hour + minute / 60.0
+        
         return {
-            "hour": self.current_hour,
-            "temperature": self.generate_temperature(self.current_hour),
-            "solar_production": self.generate_solar_production(self.current_hour),
-            "energy_price": self.generate_electricity_price(self.current_hour),
+            "hour": hour,
+            "minute": minute,
+            "temperature": self.generate_temperature(float_hour),
+            "solar_production": self.generate_solar_production(float_hour),
+            "energy_price": self.generate_electricity_price(float_hour),
             "season": self.season,
             "day": self.day_count,
             "hourly_consumption_total_kwh": round(self.last_hour_consumption_kwh, 3),
@@ -148,13 +153,13 @@ class WorldAgent(Agent):
         """Apply temperature effects from active devices."""
         # AC cooling effect
         if self.active_devices.get("ac.livingroom") == "ON":
-            # AC cools the environment gradually
-            self.current_temperature -= 0.8
+            # AC cools the environment gradually, reduced to 15m scale
+            self.current_temperature -= 0.8 / 4.0
             print(f"[WorldAgent] AC is ON: cooling effect applied (now {self.current_temperature:.1f}°C)")
 
         # Fridge cooling effect (minor, mostly contained)
         if self.active_devices.get("fridge") == "ON":
-            self.current_temperature += 0.1
+            self.current_temperature += 0.1 / 4.0
 
     class DeviceStateListener(CyclicBehaviour):
         """Listen for device state change messages."""
@@ -172,12 +177,14 @@ class WorldAgent(Agent):
                         print(f"[WorldAgent] Device '{device_name}' state: {state}")
                     elif event == "device_consumption":
                         hour = data.get("hour")
+                        minute = data.get("minute", 0)
                         day = data.get("day")
                         consumption_kwh = float(data.get("consumption_kwh", 0.0))
                         self.agent.register_device_consumption(
                             device_name=device_name,
                             day=day,
                             hour=hour,
+                            minute=minute,
                             consumption_kwh=consumption_kwh,
                         )
 
@@ -209,9 +216,9 @@ class WorldAgent(Agent):
 
             # Log current conditions
             active_info = f" | Active devices: {', '.join(self.agent.active_devices.keys())}" if self.agent.active_devices else ""
-            print(f"[WorldAgent] {state['hour']:02d}:00 | Temp: {state['temperature']}°C | "
+            print(f"[WorldAgent] {state['hour']:02d}:{state['minute']:02d} | Temp: {state['temperature']}°C | "
                   f"Solar: {state['solar_production']}kW | Price: {state['energy_price']}€ | "
-                  f"Last hour: {state['hourly_consumption_total_kwh']}kWh | "
+                  f"Last step: {state['hourly_consumption_total_kwh']}kWh | "
                   f"Day total: {state['daily_consumption_total_kwh']}kWh{active_info}")
 
             # Update GUI state
@@ -225,11 +232,12 @@ class WorldAgent(Agent):
                 msg.body = json.dumps(state)
                 await self.send(msg)
 
-            # Advance hour after processing the current interval.
-            self.agent.current_hour = (self.agent.current_hour + 1) % 24
+            # Advance 15 minutes
+            self.agent.clock_minutes += 15
 
-            # At 00:00, close previous day and reset counters for the new day.
-            if self.agent.current_hour == 0:
+            # At midnight (1440 mins), close previous day and reset counters.
+            if self.agent.clock_minutes >= 1440:
+                self.agent.clock_minutes = 0
                 print("\n" + "=" * 60)
                 print(
                     f"DAY {self.agent.day_count} SUMMARY | "

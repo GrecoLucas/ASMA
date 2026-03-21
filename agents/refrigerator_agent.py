@@ -36,8 +36,8 @@ class RefrigeratorCompressor:
 class Refrigerator(Device):
     """Refrigerator device agent that maintains cold temperature using rules."""
 
-    def __init__(self, jid, password, target_temp=4, temp_margin=1):
-        super().__init__(jid, password, device_type="refrigerator")
+    def __init__(self, jid, password, target_temp=4, temp_margin=1, peers=None):
+        super().__init__(jid, password, device_type="refrigerator", peers=peers, priority=1)
         self.target_temp = target_temp
         self.temp_margin = temp_margin
         self.current_temp = None
@@ -99,6 +99,7 @@ class Refrigerator(Device):
         compressor = self.actuators["compressor"]
         return {
             "device_type": "refrigerator",
+            "priority": self.priority,
             "compressor_status": compressor.get_state(),
             "current_temp": self.current_temp,
             "target_temp": self.target_temp,
@@ -110,11 +111,12 @@ class Refrigerator(Device):
 
     def get_log_info(self, world_state):
         hour = world_state.get("hour", 0)
+        minute = world_state.get("minute", 0)
         compressor = self.actuators["compressor"]
         status = compressor.get_state()
         power = self.get_power_consumption_kw()
         return (
-            f"Hour: {hour:02d}h | Interior: {self.current_temp}°C | Compressor: {status} | "
+            f"Time: {hour:02d}:{minute:02d} | Interior: {self.current_temp}°C | Compressor: {status} | "
             f"Power: {power:.2f} kW | Daily: {self.daily_consumption_kwh:.2f} kWh"
         )
 
