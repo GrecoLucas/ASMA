@@ -36,8 +36,8 @@ class ACActuatorComponent:
 class AirConditioner(Device):
     """Air conditioner device agent with temperature sensor and rule-based actuator control."""
 
-    def __init__(self, jid, password, target_temp=22, temp_margin=2, peers=None):
-        super().__init__(jid, password, device_type="air_conditioner", peers=peers, priority=5)
+    def __init__(self, jid, password, target_temp=21, temp_margin=2, peers=None):
+        super().__init__(jid, password, device_type="air_conditioner", peers=peers)
         self.target_temp = target_temp
         self.temp_margin = temp_margin
         self.current_temp = None
@@ -80,6 +80,44 @@ class AirConditioner(Device):
         if temperature is not None:
             self.sensors["temperature"].update(temperature)
 
+    def calculate_priority(self, world_state=None):
+        """Calculate AC priority based on temperature deviation from target.
+
+        Priority scale (0=highest, 5=lowest):
+        - 0: Extreme discomfort (≥8°C deviation) - health/safety concern
+        - 1: High discomfort (6-8°C deviation) - very uncomfortable
+        - 2: Moderate discomfort (4-6°C deviation) - uncomfortable
+        - 3: Slight discomfort (2-4°C deviation) - noticeable
+        - 4: Comfortable (<2°C deviation) - within acceptable range
+
+        Returns:
+            int: Priority value 0-4
+        """
+        if self.current_temp is None:
+            return 3  # Default medium priority if no temp data
+
+        temp_deviation = abs(self.current_temp - self.target_temp)
+
+        # Extreme discomfort - health/safety concern
+        if temp_deviation >= 8:
+            return 0
+
+        # High discomfort - very uncomfortable
+        elif temp_deviation >= 6:
+            return 1
+
+        # Moderate discomfort - uncomfortable
+        elif temp_deviation >= 4:
+            return 2
+
+        # Slight discomfort - noticeable but tolerable
+        elif temp_deviation >= 2:
+            return 3
+
+        # Comfortable - within acceptable range
+        else:
+            return 4
+
     def get_power_consumption_kw(self):
         ac_actuator = self.actuators["ac_switch"]
         return self.active_power_kw if ac_actuator.is_on else self.idle_power_kw
@@ -92,12 +130,13 @@ class AirConditioner(Device):
         ac_actuator = self.actuators["ac_switch"]
         return {
             "device_type": "air_conditioner",
-            "priority": self.priority,
+            "priority": self.current_priority if self.current_priority is not None else 4,
             "ac_status": ac_actuator.get_state(),
             "current_temp": self.current_temp,
             "target_temp": self.target_temp,
             "temp_margin": self.temp_margin,
             "power_kw": round(self.get_power_consumption_kw(), 3),
+            "max_power_kw": self.active_power_kw,
             "hourly_consumption_kwh": round(self.hourly_consumption_kwh, 3),
             "daily_consumption_kwh": round(self.daily_consumption_kwh, 3),
         }
@@ -117,8 +156,9 @@ class AirConditioner(Device):
         print(f"Agent [{self.name}] (AirConditioner) started.")
         print(f"  - Target temperature: {self.target_temp}°C")
         print(f"  - Temperature margin: ±{self.temp_margin}°C")
+        print(f"  - Dynamic priority: 0-4 (0=extreme discomfort, 4=comfortable)")
         print(f"  - Power profile: idle={self.idle_power_kw}kW, active={self.active_power_kw}kW")
         print(f"  - Rules configured: {len(self.rules)}")
         for rule in self.rules:
             print(f"    - {rule}")
-        self.add_behaviour(self.MonitorEnvironment())
+        await super().setup()

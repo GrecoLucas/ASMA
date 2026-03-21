@@ -18,7 +18,7 @@ async def main():
     ac_jid = AGENTS["ac_livingroom"]
     fridge_jid = AGENTS["fridge"]
 
-    ac_livingroom = AirConditioner(ac_jid, PASSWORD, target_temp=20, temp_margin=2, peers=[fridge_jid])
+    ac_livingroom = AirConditioner(ac_jid, PASSWORD, target_temp=21, temp_margin=2, peers=[fridge_jid])
     fridge = Refrigerator(fridge_jid, PASSWORD, target_temp=4, temp_margin=1, peers=[ac_jid])
     world_agent = WorldAgent(AGENTS["world"], PASSWORD, season="summer", receivers=[ac_jid, fridge_jid])
 

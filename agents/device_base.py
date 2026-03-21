@@ -52,11 +52,12 @@ class Rule:
 class Device(Agent):
     """Base class for device agents with sensors, actuators, relations, and energy accounting."""
 
-    def __init__(self, jid, password, device_type="generic", peers=None, priority=10):
+    def __init__(self, jid, password, device_type="generic", peers=None):
         super().__init__(jid, password)
         self.device_type = device_type
         self.peers = peers or []
-        self.priority = priority
+        self.current_priority = None  # Calculated dynamically each step
+        self.peer_power_status = {}  # Tracks {peer_name: {power_kw, timestamp}}
         self.sensors = {}
         self.actuators = {}
         self.relations = {}
@@ -84,6 +85,33 @@ class Device(Agent):
 
     def add_rule(self, rule):
         self.rules.append(rule)
+
+    def calculate_priority(self, world_state=None):
+        """Calculate device priority (0-5, where 0=highest).
+
+        Override in subclasses based on device-specific operational needs.
+        - 0: Critical/highest priority
+        - 1-2: High priority
+        - 3: Medium priority (default)
+        - 4-5: Low priority (can defer)
+
+        Returns:
+            int: Priority value 0-5
+        """
+        return 3  # Default medium priority
+
+    def estimate_total_power(self):
+        """Estimate current total power consumption from P2P data and own consumption.
+
+        Returns:
+            float: Estimated total power in kW
+        """
+        my_power = self.get_power_consumption_kw()
+        peer_power = sum(
+            data["power_kw"]
+            for data in self.peer_power_status.values()
+        )
+        return my_power + peer_power
 
     def evaluate_rules(self, sensor_name, sensor_value):
         """Evaluate all rules for a given sensor and execute matching actuator commands."""
@@ -169,7 +197,10 @@ class Device(Agent):
             if msg:
                 try:
                     world_state = json.loads(msg.body)
-                    
+
+                    # Calculate current priority based on world state
+                    self.agent.current_priority = self.agent.calculate_priority(world_state)
+
                     if self.agent.shed_timeout > 0:
                         self.agent.shed_timeout -= 1
 
@@ -185,6 +216,21 @@ class Device(Agent):
 
                     from config import AGENTS
                     device_name = self.agent.name.split("@")[0]
+
+                    # Broadcast power status to peers (P2P communication)
+                    if self.agent.peers:
+                        current_power = self.agent.get_power_consumption_kw()
+                        for peer_jid in self.agent.peers:
+                            power_status_msg = Message(to=peer_jid)
+                            power_status_msg.set_metadata("performative", "inform")
+                            power_status_msg.set_metadata("ontology", "p2p")
+                            power_status_msg.body = json.dumps({
+                                "event": "power_status",
+                                "device_name": device_name,
+                                "power_kw": round(current_power, 3),
+                                "timestamp": world_state.get("hour", 0) * 60 + world_state.get("minute", 0)
+                            })
+                            await self.send(power_status_msg)
 
                     # Notify world about hourly consumption
                     consumption_msg = Message(to=AGENTS["world"])
@@ -207,20 +253,31 @@ class Device(Agent):
 
                             # Se ligar, envia Broadcast de Intenção aos Peers (Negociação)
                             if rule.command == "on" and self.agent.peers:
+                                # Calculate total power if I turn on
+                                from config import MAX_POWER_KW
+                                current_power = self.agent.get_power_consumption_kw()
+                                power_increase = self.agent.active_power_kw - current_power
+                                estimated_total = self.agent.estimate_total_power() + power_increase
+
                                 for peer_jid in self.agent.peers:
                                     peer_msg = Message(to=peer_jid)
                                     peer_msg.set_metadata("performative", "inform")
                                     peer_msg.set_metadata("ontology", "p2p")
                                     peer_msg.body = json.dumps({
                                         "event": "power_request",
-                                        "priority": self.agent.priority,
-                                        "power_kw": self.agent.active_power_kw
+                                        "requester": self.agent.name.split("@")[0],
+                                        "priority": self.agent.current_priority,
+                                        "power_needed_kw": self.agent.active_power_kw,
+                                        "current_total_kw": estimated_total,
+                                        "max_power_kw": MAX_POWER_KW
                                     })
                                     await self.send(peer_msg)
-                                    
+
                                     if GUI_AVAILABLE:
                                         state = get_simulation_state()
                                         state.add_message(self.agent.name.split("@")[0], peer_jid.split("@")[0], "POWER REQUEST (I want to turn ON)")
+
+                                print(f"[{self.agent.name}] Broadcasting power_request with priority: {self.agent.current_priority}")
 
                             notify_msg = Message(to=AGENTS["world"])
                             notify_msg.body = json.dumps({
@@ -241,19 +298,41 @@ class Device(Agent):
                     print(f"[{self.agent.name}] Error parsing message: {e}")
 
     class PeerCommunicationBehaviour(CyclicBehaviour):
-        """Escuta pedidos de peers e, se tiver menor prioridade, liberta carga (Shedding)."""
+        """Escuta pedidos de peers e atualiza status de energia. Liberta carga se necessário (Shedding)."""
         async def run(self):
             msg = await self.receive(timeout=10)
             if msg:
                 try:
                     data = json.loads(msg.body)
-                    if data.get("event") == "power_request":
+
+                    # Handle power status updates from peers
+                    if data.get("event") == "power_status":
+                        device_name = data.get("device_name")
+                        power_kw = data.get("power_kw", 0)
+                        timestamp = data.get("timestamp", 0)
+
+                        # Update peer power status
+                        self.agent.peer_power_status[device_name] = {
+                            "power_kw": power_kw,
+                            "timestamp": timestamp
+                        }
+
+                    # Handle power requests for negotiation
+                    elif data.get("event") == "power_request":
                         req_priority = data.get("priority")
-                        req_kw = data.get("power_kw")
+                        requester = data.get("requester", "unknown")
+                        current_total_kw = data.get("current_total_kw", 0)
+                        max_power_kw = data.get("max_power_kw", 7.0)
+
+                        # Calculate my current priority
+                        my_priority = self.agent.current_priority if self.agent.current_priority is not None else 3
                         current_power_kw = self.agent.get_power_consumption_kw()
-                        
+
+                        print(f"[{self.agent.name}] Received power_request from {requester} "
+                              f"(their priority: {req_priority}, my priority: {my_priority})")
+
                         # Se estou ativo e ouço alguem com MAIOR prioridade (número menor)
-                        if current_power_kw > self.agent.idle_power_kw and self.agent.priority > req_priority:
+                        if current_power_kw > self.agent.idle_power_kw and my_priority > req_priority:
                             print(f"[{self.agent.name}] CONFLITO P2P: Cedendo energia a {msg.sender} (Shedding)")
                             
                             if GUI_AVAILABLE:
@@ -282,7 +361,7 @@ class Device(Agent):
                     print(f"[{self.agent.name}] P2P Error: {e}")
 
     async def setup(self):
-        print(f"Agent [{self.name}] ({self.device_type.title()}) started. P2P priority: {self.priority}")
+        print(f"Agent [{self.name}] ({self.device_type.title()}) started with dynamic priority (0=highest)")
         if self.rules:
             print(f"  - Rules configured: {len(self.rules)}")
             for rule in self.rules:

@@ -96,6 +96,7 @@ class DevicesPanel:
                 target_temp = device_state.get("target_temp") or 0.0
                 temp_margin = device_state.get("temp_margin") or 0.0
                 power_kw = device_state.get("power_kw") or 0.0
+                max_power_kw = device_state.get("max_power_kw") or 0.0
                 hourly_consumption_kwh = device_state.get("hourly_consumption_kwh") or 0.0
                 daily_consumption_kwh = device_state.get("daily_consumption_kwh") or 0.0
 
@@ -103,9 +104,15 @@ class DevicesPanel:
 
                 # Update labels
                 device_info["labels"]["priority"].config(text=f"Priority: {priority}")
-                device_info["labels"]["status"].config(
-                    text=f"Status: {'🟢 ON' if status == 'ON' else '🔴 OFF'}"
-                )
+
+                # Status with color coding
+                if status == 'ON':
+                    status_text = "Status: ON"
+                    status_color = "#00ff88"  # Green
+                else:
+                    status_text = "Status: OFF"
+                    status_color = "#ff3333"  # Red
+                device_info["labels"]["status"].config(text=status_text, foreground=status_color)
                 device_info["labels"]["temp"].config(
                     text=f"Current Temp: {current_temp:.1f} °C"
                 )
@@ -113,7 +120,7 @@ class DevicesPanel:
                     text=f"Target Temp: {target_temp:.1f} °C ±{temp_margin:.1f}°C"
                 )
                 device_info["labels"]["power"].config(
-                    text=f"Power: {power_kw:.2f} kW"
+                    text=f"Power: {power_kw:.2f} kW / {max_power_kw:.2f} kW"
                 )
                 device_info["labels"]["consumption"].config(
                     text=f"Hourly: {hourly_consumption_kwh:.3f} kWh | Daily: {daily_consumption_kwh:.3f} kWh"
@@ -133,6 +140,7 @@ class DevicesPanel:
                 target_temp = device_state.get("target_temp") or 0.0
                 temp_margin = device_state.get("temp_margin") or 0.0
                 power_kw = device_state.get("power_kw") or 0.0
+                max_power_kw = device_state.get("max_power_kw") or 0.0
                 hourly_consumption_kwh = device_state.get("hourly_consumption_kwh") or 0.0
                 daily_consumption_kwh = device_state.get("daily_consumption_kwh") or 0.0
 
@@ -140,9 +148,15 @@ class DevicesPanel:
 
                 # Update labels
                 device_info["labels"]["priority"].config(text=f"Priority: {priority}")
-                device_info["labels"]["status"].config(
-                    text=f"Compressor: {'🟢 RUNNING' if status == 'RUNNING' else '🔴 IDLE'}"
-                )
+
+                # Status with color coding
+                if status == 'RUNNING':
+                    status_text = "Status: ON"
+                    status_color = "#00ff88"  # Green
+                else:
+                    status_text = "Status: OFF"
+                    status_color = "#ff3333"  # Red
+                device_info["labels"]["status"].config(text=status_text, foreground=status_color)
                 device_info["labels"]["temp"].config(
                     text=f"Interior Temp: {current_temp:.1f} °C"
                 )
@@ -150,7 +164,7 @@ class DevicesPanel:
                     text=f"Target Temp: {target_temp:.1f} °C ±{temp_margin:.1f}°C"
                 )
                 device_info["labels"]["power"].config(
-                    text=f"Power: {power_kw:.2f} kW"
+                    text=f"Power: {power_kw:.2f} kW / {max_power_kw:.2f} kW"
                 )
                 device_info["labels"]["consumption"].config(
                     text=f"Hourly: {hourly_consumption_kwh:.3f} kWh | Daily: {daily_consumption_kwh:.3f} kWh"

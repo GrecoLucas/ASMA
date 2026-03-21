@@ -156,6 +156,11 @@ class SimulationGUI:
         self.daily_consumption_label = ttk.Label(info_frame, text="-- kWh", style="Value.TLabel")
         self.daily_consumption_label.grid(row=3, column=3, sticky=tk.W, padx=5, pady=5)
 
+        # Row 5: Current Power Consumption vs Max (NEW)
+        ttk.Label(info_frame, text="Power Usage:", style="Heading.TLabel").grid(row=4, column=0, sticky=tk.W, padx=5, pady=5)
+        self.power_usage_label = ttk.Label(info_frame, text="-- kW / 7.00 kW", style="Value.TLabel")
+        self.power_usage_label.grid(row=4, column=1, columnspan=3, sticky=tk.W, padx=5, pady=5)
+
 
 
     def update_display(self):
@@ -173,6 +178,30 @@ class SimulationGUI:
         self.day_label.config(text=f"Day {world.get('day') or 0}")
         self.hourly_consumption_label.config(text=f"{world.get('hourly_consumption_total_kwh') or 0.0:.3f} kWh")
         self.daily_consumption_label.config(text=f"{world.get('daily_consumption_total_kwh') or 0.0:.3f} kWh")
+
+        # Calculate current total power consumption from all devices
+        from config import MAX_POWER_KW
+        total_power = 0.0
+        device_names = self.state.get_all_devices()
+        for device_name in device_names:
+            device_state = self.state.get_device_state(device_name)
+            total_power += device_state.get("power_kw", 0.0)
+
+        # Update power usage display with color coding
+        power_percentage = (total_power / MAX_POWER_KW) * 100
+        if power_percentage >= 100:
+            power_color = "#ff3333"  # Red - at or over limit
+        elif power_percentage >= 85:
+            power_color = "#ff9900"  # Orange - warning
+        elif power_percentage >= 70:
+            power_color = "#ffcc00"  # Yellow - caution
+        else:
+            power_color = "#00ff88"  # Green - normal
+
+        self.power_usage_label.config(
+            text=f"{total_power:.2f} kW / {MAX_POWER_KW:.2f} kW ({power_percentage:.0f}%)",
+            foreground=power_color
+        )
 
         # Update device states
         self.devices_panel.update_devices(self.state)

@@ -37,7 +37,7 @@ class Refrigerator(Device):
     """Refrigerator device agent that maintains cold temperature using rules."""
 
     def __init__(self, jid, password, target_temp=4, temp_margin=1, peers=None):
-        super().__init__(jid, password, device_type="refrigerator", peers=peers, priority=1)
+        super().__init__(jid, password, device_type="refrigerator", peers=peers)
         self.target_temp = target_temp
         self.temp_margin = temp_margin
         self.current_temp = None
@@ -87,6 +87,17 @@ class Refrigerator(Device):
 
             self.sensors["temperature"].update(round(self.current_temp, 1))
 
+    def calculate_priority(self, world_state=None):
+        """Calculate Fridge priority - always highest priority.
+
+        Priority scale (0=highest, 5=lowest):
+        - Fridge always returns 0 (highest priority, never yields to other devices)
+
+        Returns:
+            int: Priority value 0 (constant)
+        """
+        return 0
+
     def get_power_consumption_kw(self):
         compressor = self.actuators["compressor"]
         return self.active_power_kw if compressor.is_running else self.idle_power_kw
@@ -99,12 +110,13 @@ class Refrigerator(Device):
         compressor = self.actuators["compressor"]
         return {
             "device_type": "refrigerator",
-            "priority": self.priority,
+            "priority": self.current_priority if self.current_priority is not None else 3,
             "compressor_status": compressor.get_state(),
             "current_temp": self.current_temp,
             "target_temp": self.target_temp,
             "temp_margin": self.temp_margin,
             "power_kw": round(self.get_power_consumption_kw(), 3),
+            "max_power_kw": self.active_power_kw,
             "hourly_consumption_kwh": round(self.hourly_consumption_kwh, 3),
             "daily_consumption_kwh": round(self.daily_consumption_kwh, 3),
         }
@@ -124,8 +136,9 @@ class Refrigerator(Device):
         print(f"Agent [{self.name}] (Refrigerator) started.")
         print(f"  - Target temperature: {self.target_temp}°C")
         print(f"  - Temperature margin: ±{self.temp_margin}°C")
+        print(f"  - Priority: 0 (constant - always highest priority)")
         print(f"  - Power profile: idle={self.idle_power_kw}kW, active={self.active_power_kw}kW")
         print(f"  - Rules configured: {len(self.rules)}")
         for rule in self.rules:
             print(f"    - {rule}")
-        self.add_behaviour(self.MonitorEnvironment())
+        await super().setup()
