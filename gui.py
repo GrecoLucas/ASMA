@@ -21,6 +21,7 @@ class SimulationState:
         }
         self.devices = {}
         self.messages = []
+        self.last_message_key = None
 
     def update_world_state(self, state):
         with self.lock:
@@ -45,8 +46,13 @@ class SimulationState:
     def add_message(self, sender, receiver, content):
         with self.lock:
             from datetime import datetime
+            message_key = (sender, receiver, content)
+            if self.last_message_key == message_key:
+                return
+
             timestamp = datetime.now().strftime("%H:%M:%S")
             self.messages.append(f"[{timestamp}] {sender} -> {receiver}: {content}")
+            self.last_message_key = message_key
             if len(self.messages) > 100:
                 self.messages.pop(0)
 

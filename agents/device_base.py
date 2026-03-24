@@ -1,6 +1,8 @@
 import json
+import time
+import uuid
 from spade.agent import Agent
-from spade.behaviour import CyclicBehaviour
+from spade.behaviour import CyclicBehaviour, PeriodicBehaviour
 from spade.message import Message
 
 # Import GUI state if available
@@ -58,6 +60,8 @@ class Device(Agent):
         self.peers = peers or []
         self.current_priority = None  # Calculated dynamically each step
         self.peer_power_status = {}  # Tracks {peer_name: {power_kw, timestamp}}
+        self.pending_negotiations = {}  # {tx_id: {rule, expected_replies, replies, ...}}
+        self.incoming_request_decisions = {}  # {tx_id: {accept, should_shed, requester}}
         self.sensors = {}
         self.actuators = {}
         self.relations = {}
@@ -126,9 +130,14 @@ class Device(Agent):
                 if rule.command == "on" and self.shed_timeout > 0:
                     continue  # Under shedding penalty, cannot turn on right now
 
-                self.actuate(rule.actuator_name, rule.command)
-                result = (rule, True, f"Activated: {rule.command}", True)
-                rule.last_triggered = True
+                if rule.command == "on" and self.peers:
+                    # In distributed mode, defer ON until negotiation COMMIT.
+                    rule.last_triggered = True
+                    result = (rule, True, "Negotiation started", True)
+                else:
+                    self.actuate(rule.actuator_name, rule.command)
+                    result = (rule, True, f"Activated: {rule.command}", True)
+                    rule.last_triggered = True
             elif not condition_met and rule.last_triggered:
                 rule.last_triggered = False
                 result = (rule, False, "Condition no longer met", False)
@@ -188,6 +197,162 @@ class Device(Agent):
         hour = world_state.get("hour", 0)
         minute = world_state.get("minute", 0)
         return f"Time: {hour:02d}:{minute:02d}"
+
+    @staticmethod
+    def _normalize_agent_name(agent_id):
+        value = str(agent_id or "")
+        if "/" in value:
+            value = value.split("/", 1)[0]
+        if "@" in value:
+            value = value.split("@", 1)[0]
+        return value
+
+    def _log_p2p(self, sender, receiver, content, event=None, tx_id=None):
+        if not GUI_AVAILABLE:
+            return
+        state = get_simulation_state()
+        tag_parts = []
+        if event:
+            tag_parts.append(event)
+        if tx_id:
+            tag_parts.append(f"tx={tx_id[:8]}")
+        tag_prefix = f"[{' | '.join(tag_parts)}] " if tag_parts else ""
+        state.add_message(
+            self._normalize_agent_name(sender),
+            self._normalize_agent_name(receiver),
+            f"{tag_prefix}{content}",
+        )
+
+    async def _start_power_negotiation(self, rule, behaviour):
+        from config import MAX_POWER_KW
+
+        tx_id = uuid.uuid4().hex
+        requester = self._normalize_agent_name(self.name)
+        current_power = self.get_power_consumption_kw()
+        power_increase = max(0.0, self.active_power_kw - current_power)
+        estimated_total = self.estimate_total_power() + power_increase
+        expected = {self._normalize_agent_name(peer_jid) for peer_jid in self.peers}
+
+        self.pending_negotiations[tx_id] = {
+            "created_at": time.monotonic(),
+            "rule": rule,
+            "requester": requester,
+            "expected_replies": expected,
+            "replies": {},
+            "estimated_total_kw": estimated_total,
+            "max_power_kw": MAX_POWER_KW,
+            "attempts": 0,
+        }
+
+        for peer_jid in self.peers:
+            peer_msg = Message(to=peer_jid)
+            peer_msg.set_metadata("performative", "inform")
+            peer_msg.set_metadata("ontology", "p2p")
+            peer_msg.body = json.dumps(
+                {
+                    "event": "power_request",
+                    "transaction_id": tx_id,
+                    "requester": requester,
+                    "priority": self.current_priority,
+                    "power_needed_kw": round(self.active_power_kw, 3),
+                    "projected_total_kw": round(estimated_total, 3),
+                    "max_power_kw": MAX_POWER_KW,
+                }
+            )
+            await behaviour.send(peer_msg)
+            self._log_p2p(requester, peer_jid, "REQUEST to turn ON", event="REQUEST", tx_id=tx_id)
+
+        print(f"[{self.name}] Started negotiation tx={tx_id[:8]} with peers={len(self.peers)}")
+
+    async def _register_power_reply(self, data, msg_sender, behaviour):
+        tx_id = data.get("transaction_id")
+        if not tx_id or tx_id not in self.pending_negotiations:
+            return
+
+        peer_name = self._normalize_agent_name(msg_sender)
+        decision = (data.get("decision") or "reject").lower()
+        should_shed = bool(data.get("should_shed", False))
+        reason = data.get("reason", "")
+
+        negotiation = self.pending_negotiations[tx_id]
+        negotiation["replies"][peer_name] = {
+            "decision": decision,
+            "should_shed": should_shed,
+            "reason": reason,
+        }
+
+        self._log_p2p(peer_name, self.name, f"REPLY {decision.upper()} {reason}".strip(), event="REPLY", tx_id=tx_id)
+
+        expected = negotiation["expected_replies"]
+        if expected.issubset(set(negotiation["replies"].keys())):
+            await self._finalize_negotiation(tx_id, timed_out=False, behaviour=behaviour)
+
+    async def _finalize_negotiation(self, tx_id, timed_out, behaviour):
+        from config import AGENTS
+
+        negotiation = self.pending_negotiations.get(tx_id)
+        if not negotiation:
+            return
+
+        replies = negotiation["replies"].values()
+        has_reject = any(reply.get("decision") != "accept" for reply in replies)
+        commit = not has_reject and len(negotiation["replies"]) > 0 and not timed_out
+
+        for peer_jid in self.peers:
+            msg = Message(to=peer_jid)
+            msg.set_metadata("performative", "inform")
+            msg.set_metadata("ontology", "p2p")
+            msg.body = json.dumps(
+                {
+                    "event": "power_commit" if commit else "power_abort",
+                    "transaction_id": tx_id,
+                    "requester": negotiation["requester"],
+                }
+            )
+            await behaviour.send(msg)
+
+        rule = negotiation["rule"]
+        if commit:
+            self.actuate(rule.actuator_name, "on")
+            self._log_p2p(self.name, "all_peers", "COMMIT applied, turned ON", event="COMMIT", tx_id=tx_id)
+            notify_msg = Message(to=AGENTS["world"])
+            notify_msg.body = json.dumps(
+                {
+                    "event": "state_changed",
+                    "device_name": self._normalize_agent_name(self.name),
+                    "state": "ON",
+                }
+            )
+            await behaviour.send(notify_msg)
+        else:
+            # Release the ON rule so it can reattempt if condition remains true.
+            rule.last_triggered = False
+            reason = "timeout" if timed_out else "peer rejection"
+            self._log_p2p(self.name, "all_peers", f"ABORT due to {reason}", event="ABORT", tx_id=tx_id)
+
+        self.pending_negotiations.pop(tx_id, None)
+
+    async def _apply_shedding(self, requester_name, tx_id, behaviour):
+        from config import AGENTS
+
+        self.shed_timeout = 3
+        for rule in self.rules:
+            if rule.command == "off":
+                self.actuate(rule.actuator_name, rule.command)
+                rule.last_triggered = True
+            elif rule.command == "on":
+                rule.last_triggered = False
+
+        notify_msg = Message(to=AGENTS["world"])
+        notify_msg.body = json.dumps(
+            {
+                "event": "state_changed",
+                "device_name": self._normalize_agent_name(self.name),
+                "state": "OFF (SHED)",
+            }
+        )
+        await behaviour.send(notify_msg)
+        self._log_p2p(self.name, requester_name, "SHED load after COMMIT", event="SHED", tx_id=tx_id)
 
     class MonitorEnvironment(CyclicBehaviour):
         """Generic behavior that monitors environment and controls device using rules."""
@@ -253,31 +418,8 @@ class Device(Agent):
 
                             # Se ligar, envia Broadcast de Intenção aos Peers (Negociação)
                             if rule.command == "on" and self.agent.peers:
-                                # Calculate total power if I turn on
-                                from config import MAX_POWER_KW
-                                current_power = self.agent.get_power_consumption_kw()
-                                power_increase = self.agent.active_power_kw - current_power
-                                estimated_total = self.agent.estimate_total_power() + power_increase
-
-                                for peer_jid in self.agent.peers:
-                                    peer_msg = Message(to=peer_jid)
-                                    peer_msg.set_metadata("performative", "inform")
-                                    peer_msg.set_metadata("ontology", "p2p")
-                                    peer_msg.body = json.dumps({
-                                        "event": "power_request",
-                                        "requester": self.agent.name.split("@")[0],
-                                        "priority": self.agent.current_priority,
-                                        "power_needed_kw": self.agent.active_power_kw,
-                                        "current_total_kw": estimated_total,
-                                        "max_power_kw": MAX_POWER_KW
-                                    })
-                                    await self.send(peer_msg)
-
-                                    if GUI_AVAILABLE:
-                                        state = get_simulation_state()
-                                        state.add_message(self.agent.name.split("@")[0], peer_jid.split("@")[0], "POWER REQUEST (I want to turn ON)")
-
-                                print(f"[{self.agent.name}] Broadcasting power_request with priority: {self.agent.current_priority}")
+                                await self.agent._start_power_negotiation(rule, self)
+                                continue
 
                             notify_msg = Message(to=AGENTS["world"])
                             notify_msg.body = json.dumps({
@@ -319,46 +461,94 @@ class Device(Agent):
 
                     # Handle power requests for negotiation
                     elif data.get("event") == "power_request":
+                        tx_id = data.get("transaction_id")
                         req_priority = data.get("priority")
                         requester = data.get("requester", "unknown")
-                        current_total_kw = data.get("current_total_kw", 0)
+                        projected_total_kw = data.get("projected_total_kw", data.get("current_total_kw", 0))
                         max_power_kw = data.get("max_power_kw", 7.0)
 
                         # Calculate my current priority
                         my_priority = self.agent.current_priority if self.agent.current_priority is not None else 3
                         current_power_kw = self.agent.get_power_consumption_kw()
 
-                        print(f"[{self.agent.name}] Received power_request from {requester} "
+                        print(f"[{self.agent.name}] Received power_request tx={str(tx_id)[:8]} from {requester} "
                               f"(their priority: {req_priority}, my priority: {my_priority})")
 
-                        # Se estou ativo e ouço alguem com MAIOR prioridade (número menor)
-                        if current_power_kw > self.agent.idle_power_kw and my_priority > req_priority:
-                            print(f"[{self.agent.name}] CONFLITO P2P: Cedendo energia a {msg.sender} (Shedding)")
-                            
-                            if GUI_AVAILABLE:
-                                state = get_simulation_state()
-                                state.add_message(self.agent.name.split("@")[0], msg.sender.split("@")[0], "YIELDING (Shedding load due to higher priority)")
-                                
-                            self.agent.shed_timeout = 3  # Desativa por 3 ticks do simulador
-                            
-                            # Força o desligamento dos atuadores e reseta Rules
-                            for rule in self.agent.rules:
-                                if rule.command == "off":
-                                    self.agent.actuate(rule.actuator_name, rule.command)
-                                    rule.last_triggered = True
-                                elif rule.command == "on":
-                                    rule.last_triggered = False
-                                    
-                            from config import AGENTS
-                            notify_msg = Message(to=AGENTS["world"])
-                            notify_msg.body = json.dumps({
-                                "event": "state_changed",
-                                "device_name": self.agent.name.split("@")[0],
-                                "state": "OFF (SHED)",
-                            })
-                            await self.send(notify_msg)
+                        should_shed = (
+                            projected_total_kw > max_power_kw
+                            and current_power_kw > self.agent.idle_power_kw
+                            and my_priority > req_priority
+                        )
+                        decision = "accept" if (projected_total_kw <= max_power_kw or should_shed) else "reject"
+                        reason = "shed_possible" if should_shed else ("within_limit" if projected_total_kw <= max_power_kw else "cannot_shed")
+
+                        self.agent.incoming_request_decisions[tx_id] = {
+                            "accept": decision == "accept",
+                            "should_shed": should_shed,
+                            "requester": requester,
+                        }
+
+                        reply = Message(to=str(msg.sender).split("/", 1)[0])
+                        reply.set_metadata("performative", "inform")
+                        reply.set_metadata("ontology", "p2p")
+                        reply.body = json.dumps(
+                            {
+                                "event": "power_reply",
+                                "transaction_id": tx_id,
+                                "decision": decision,
+                                "should_shed": should_shed,
+                                "reason": reason,
+                                "responder": self.agent._normalize_agent_name(self.agent.name),
+                            }
+                        )
+                        await self.send(reply)
+
+                    elif data.get("event") == "power_reply":
+                        await self.agent._register_power_reply(data, msg.sender, self)
+
+                    elif data.get("event") == "power_commit":
+                        tx_id = data.get("transaction_id")
+                        decision = self.agent.incoming_request_decisions.pop(tx_id, None)
+                        if decision and decision.get("accept") and decision.get("should_shed"):
+                            await self.agent._apply_shedding(decision.get("requester", "unknown"), tx_id, self)
+                        self.agent._log_p2p(
+                            data.get("requester", "unknown"),
+                            self.agent.name,
+                            "COMMIT received",
+                            event="COMMIT",
+                            tx_id=tx_id,
+                        )
+
+                    elif data.get("event") == "power_abort":
+                        tx_id = data.get("transaction_id")
+                        self.agent.incoming_request_decisions.pop(tx_id, None)
+                        self.agent._log_p2p(
+                            data.get("requester", "unknown"),
+                            self.agent.name,
+                            "ABORT received",
+                            event="ABORT",
+                            tx_id=tx_id,
+                        )
+
                 except Exception as e:
                     print(f"[{self.agent.name}] P2P Error: {e}")
+
+    class NegotiationTimeoutBehaviour(PeriodicBehaviour):
+        """Abort pending negotiations when replies do not arrive in time."""
+
+        async def run(self):
+            from config import NEGOTIATION_TIMEOUT_SEC
+
+            now = time.monotonic()
+            pending_ids = list(self.agent.pending_negotiations.keys())
+            for tx_id in pending_ids:
+                negotiation = self.agent.pending_negotiations.get(tx_id)
+                if not negotiation:
+                    continue
+
+                age = now - negotiation["created_at"]
+                if age >= NEGOTIATION_TIMEOUT_SEC:
+                    await self.agent._finalize_negotiation(tx_id, timed_out=True, behaviour=self)
 
     async def setup(self):
         print(f"Agent [{self.name}] ({self.device_type.title()}) started with dynamic priority (0=highest)")
@@ -379,6 +569,9 @@ class Device(Agent):
         peer_template = Template()
         peer_template.metadata = {"ontology": "p2p"}
         self.add_behaviour(self.PeerCommunicationBehaviour(), peer_template)
+
+        from config import NEGOTIATION_LOOP_PERIOD_SEC
+        self.add_behaviour(self.NegotiationTimeoutBehaviour(period=NEGOTIATION_LOOP_PERIOD_SEC))
 
     def __repr__(self):
         return f"Device(name={self.name}, type={self.device_type}, status={self.status})"
