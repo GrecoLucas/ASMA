@@ -83,15 +83,15 @@ class AirConditioner(Device):
     def calculate_priority(self, world_state=None):
         """Calculate AC priority based on temperature deviation from target.
 
-        Priority scale (0=highest, 5=lowest):
-        - 0: Extreme discomfort (≥8°C deviation) - health/safety concern
-        - 1: High discomfort (6-8°C deviation) - very uncomfortable
-        - 2: Moderate discomfort (4-6°C deviation) - uncomfortable
-        - 3: Slight discomfort (2-4°C deviation) - noticeable
-        - 4: Comfortable (<2°C deviation) - within acceptable range
+        Priority scale (0=lowest, 5=highest):
+        - 5: Extreme discomfort (≥8°C deviation) - health/safety concern
+        - 4: High discomfort (6-8°C deviation) - very uncomfortable
+        - 3: Moderate discomfort (4-6°C deviation) - uncomfortable
+        - 2: Slight discomfort (2-4°C deviation) - noticeable
+        - 1: Comfortable (<2°C deviation) - within acceptable range
 
         Returns:
-            int: Priority value 0-4
+            int: Priority value 1-5
         """
         if self.current_temp is None:
             return 3  # Default medium priority if no temp data
@@ -100,23 +100,23 @@ class AirConditioner(Device):
 
         # Extreme discomfort - health/safety concern
         if temp_deviation >= 8:
-            return 0
+            return 5
 
         # High discomfort - very uncomfortable
         elif temp_deviation >= 6:
-            return 1
+            return 4
 
         # Moderate discomfort - uncomfortable
         elif temp_deviation >= 4:
-            return 2
+            return 3
 
         # Slight discomfort - noticeable but tolerable
         elif temp_deviation >= 2:
-            return 3
+            return 2
 
         # Comfortable - within acceptable range
         else:
-            return 4
+            return 1
 
     def get_power_consumption_kw(self):
         ac_actuator = self.actuators["ac_switch"]
@@ -130,7 +130,7 @@ class AirConditioner(Device):
         ac_actuator = self.actuators["ac_switch"]
         return {
             "device_type": "air_conditioner",
-            "priority": self.current_priority if self.current_priority is not None else 4,
+            "priority": self.current_priority if self.current_priority is not None else 1,
             "ac_status": ac_actuator.get_state(),
             "current_temp": self.current_temp,
             "target_temp": self.target_temp,

@@ -91,13 +91,13 @@ class Device(Agent):
         self.rules.append(rule)
 
     def calculate_priority(self, world_state=None):
-        """Calculate device priority (0-5, where 0=highest).
+        """Calculate device priority (0-5, where 5=highest).
 
         Override in subclasses based on device-specific operational needs.
-        - 0: Critical/highest priority
-        - 1-2: High priority
+        - 5: Critical/highest priority
+        - 3-4: High priority
         - 3: Medium priority (default)
-        - 4-5: Low priority (can defer)
+        - 0-2: Low priority (can defer)
 
         Returns:
             int: Priority value 0-5
@@ -463,6 +463,9 @@ class Device(Agent):
                         projected_total_kw = data.get("projected_total_kw", data.get("current_total_kw", 0))
                         max_power_kw = data.get("max_power_kw", 7.0)
 
+                        if req_priority is None:
+                            req_priority = 3
+
                         # Calculate my current priority
                         my_priority = self.agent.current_priority if self.agent.current_priority is not None else 3
                         current_power_kw = self.agent.get_power_consumption_kw()
@@ -470,7 +473,7 @@ class Device(Agent):
                         should_shed = (
                             projected_total_kw > max_power_kw
                             and current_power_kw > self.agent.idle_power_kw
-                            and my_priority > req_priority
+                            and my_priority < req_priority
                         )
                         decision = "accept" if (projected_total_kw <= max_power_kw or should_shed) else "reject"
                         reason = "shed_possible" if should_shed else ("within_limit" if projected_total_kw <= max_power_kw else "cannot_shed")

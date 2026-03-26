@@ -90,13 +90,13 @@ class Refrigerator(Device):
     def calculate_priority(self, world_state=None):
         """Calculate Fridge priority - always highest priority.
 
-        Priority scale (0=highest, 5=lowest):
-        - Fridge always returns 0 (highest priority, never yields to other devices)
+        Priority scale (0=lowest, 5=highest):
+        - Fridge always returns 5 (highest priority, never yields to other devices)
 
         Returns:
-            int: Priority value 0 (constant)
+            int: Priority value 5 (constant)
         """
-        return 0
+        return 5
 
     def get_power_consumption_kw(self):
         compressor = self.actuators["compressor"]

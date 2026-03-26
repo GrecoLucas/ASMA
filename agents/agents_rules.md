@@ -6,14 +6,14 @@ Este documento descreve as regras ativas dos agentes e o protocolo real de comun
 
 ## 1. Escala de Prioridade
 
-A prioridade segue escala numérica invertida: quanto menor o número, maior a prioridade.
+A prioridade segue escala numérica direta: quanto maior o número, maior a prioridade.
 
-- `0`: prioridade máxima (crítico)
-- `1-2`: alta
-- `3`: média
-- `4-5`: baixa
+- `5`: prioridade máxima (crítico)
+- `3-4`: alta
+- `2`: média
+- `0-1`: baixa
 
-Em conflitos de potência, dispositivos com prioridade numérica maior podem ser forçados a ceder carga para dispositivos mais prioritários.
+Em conflitos de potência, dispositivos com prioridade numérica menor podem ser forçados a ceder carga para dispositivos mais prioritários.
 
 ---
 
@@ -27,11 +27,11 @@ Em conflitos de potência, dispositivos com prioridade numérica maior podem ser
   - `AC On - Too Hot`: liga quando `temperatura > target + margem`.
   - `AC Off - Cool Enough`: desliga quando `temperatura < target - margem`.
 - **Prioridade:** dinâmica, baseada no desvio absoluto em relação ao alvo (`|temp_atual - target|`):
-  - `>= 8°C` -> prioridade `0`
-  - `>= 6°C` -> prioridade `1`
-  - `>= 4°C` -> prioridade `2`
-  - `>= 2°C` -> prioridade `3`
-  - `< 2°C` -> prioridade `4`
+  - `>= 8°C` -> prioridade `5`
+  - `>= 6°C` -> prioridade `4`
+  - `>= 4°C` -> prioridade `3`
+  - `>= 2°C` -> prioridade `2`
+  - `< 2°C` -> prioridade `1`
   - sem leitura de temperatura -> prioridade `3`
 
 ### 2.2. Geladeira (Refrigerator)
@@ -41,7 +41,7 @@ Em conflitos de potência, dispositivos com prioridade numérica maior podem ser
 - **Regras de atuação:**
   - `Compressor On - Warming Up`: liga quando `temperatura_interna > target + margem`.
   - `Compressor Off - Cool Enough`: desliga quando `temperatura_interna < target - margem`.
-- **Prioridade:** fixa em `0` (sempre máxima).
+- **Prioridade:** fixa em `5` (sempre máxima).
 
 ### 2.3 Máquina de Lavar (WashingMachine)
 
@@ -50,11 +50,11 @@ Em conflitos de potência, dispositivos com prioridade numérica maior podem ser
 - **Regras de atuação:**
   - `Start Washing - numero de roupas > 0`: liga quando há roupas para lavar.
   - O número de roupas pendentes aumenta com o tempo quando a máquina está parada.
-- **Prioridade:** dinâmica e crescente com o acúmulo de roupa (quanto mais roupa acumulada, mais urgente lavar e menor o valor numérico da prioridade).
-  - pouca roupa -> prioridade baixa (`5`)
-  - roupa moderada -> prioridade média (`4-3`)
-  - muita roupa acumulada -> prioridade alta (`2-1`)
-  - carga crítica/acúmulo prolongado -> prioridade muito alta (`0`)
+- **Prioridade:** dinâmica e crescente com o acúmulo de roupa (quanto mais roupa acumulada, mais urgente lavar e maior o valor numérico da prioridade).
+  - pouca roupa -> prioridade baixa (`0-1`)
+  - roupa moderada -> prioridade média (`2-3`)
+  - muita roupa acumulada -> prioridade alta (`4`)
+  - carga crítica/acúmulo prolongado -> prioridade muito alta (`5`)
 
 ---
 
@@ -93,7 +93,7 @@ Cada peer decide localmente:
 - `should_shed = True` quando:
   - `projected_total_kw > max_power_kw`, e
   - o peer está acima do consumo idle, e
-  - `my_priority > requester_priority` (peer menos prioritário)
+  - `my_priority < requester_priority` (peer menos prioritário)
 
 - `decision = accept` quando:
   - está dentro do limite (`projected_total_kw <= max_power_kw`), ou
@@ -138,7 +138,7 @@ Peers que haviam aceitado com `should_shed = True` aplicam shedding ao receber `
 
 ## 5. Resumo Operacional
 
-- A geladeira permanece estruturalmente prioritária (`0`).
+- A geladeira permanece estruturalmente prioritária (`5`).
 - O ar condicionado adapta prioridade conforme desconforto térmico.
 - A máquina de lavar eleva prioridade conforme o tempo passa e a roupa acumula.
 - A decisão de ligar em modo distribuído depende de consenso P2P.
