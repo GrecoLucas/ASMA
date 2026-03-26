@@ -153,12 +153,4 @@ class AirConditioner(Device):
         )
 
     async def setup(self):
-        print(f"Agent [{self.name}] (AirConditioner) started.")
-        print(f"  - Target temperature: {self.target_temp}°C")
-        print(f"  - Temperature margin: ±{self.temp_margin}°C")
-        print(f"  - Dynamic priority: 0-4 (0=extreme discomfort, 4=comfortable)")
-        print(f"  - Power profile: idle={self.idle_power_kw}kW, active={self.active_power_kw}kW")
-        print(f"  - Rules configured: {len(self.rules)}")
-        for rule in self.rules:
-            print(f"    - {rule}")
         await super().setup()

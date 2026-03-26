@@ -133,12 +133,6 @@ class Refrigerator(Device):
         )
 
     async def setup(self):
-        print(f"Agent [{self.name}] (Refrigerator) started.")
-        print(f"  - Target temperature: {self.target_temp}°C")
-        print(f"  - Temperature margin: ±{self.temp_margin}°C")
-        print(f"  - Priority: 0 (constant - always highest priority)")
-        print(f"  - Power profile: idle={self.idle_power_kw}kW, active={self.active_power_kw}kW")
-        print(f"  - Rules configured: {len(self.rules)}")
         for rule in self.rules:
             print(f"    - {rule}")
         await super().setup()

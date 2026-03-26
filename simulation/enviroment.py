@@ -155,7 +155,6 @@ class WorldAgent(Agent):
         if self.active_devices.get("ac.livingroom") == "ON":
             # AC cools the environment gradually, reduced to step scale
             self.current_temperature -= 0.8 * (MINUTES_PER_STEP / 60.0)
-            print(f"[WorldAgent] AC is ON: cooling effect applied (now {self.current_temperature:.1f}°C)")
 
         # Fridge cooling effect (minor, mostly contained)
         if self.active_devices.get("fridge") == "ON":
@@ -174,7 +173,6 @@ class WorldAgent(Agent):
 
                     if event == "state_changed":
                         self.agent.active_devices[device_name] = state
-                        print(f"[WorldAgent] Device '{device_name}' state: {state}")
                     elif event == "device_consumption":
                         hour = data.get("hour")
                         minute = data.get("minute", 0)
@@ -214,12 +212,6 @@ class WorldAgent(Agent):
             state["temperature"] = round(self.agent.current_temperature, 1)
             self.agent.last_world_state = state.copy()
 
-            # Log current conditions
-            active_info = f" | Active devices: {', '.join(self.agent.active_devices.keys())}" if self.agent.active_devices else ""
-            print(f"[WorldAgent] {state['hour']:02d}:{state['minute']:02d} | Temp: {state['temperature']}°C | "
-                  f"Solar: {state['solar_production']}kW | Price: {state['energy_price']}€ | "
-                  f"Last step: {state['hourly_consumption_total_kwh']}kWh | "
-                  f"Day total: {state['daily_consumption_total_kwh']}kWh{active_info}")
 
             # Update GUI state
             if GUI_AVAILABLE:
@@ -238,23 +230,11 @@ class WorldAgent(Agent):
             # At midnight (1440 mins), close previous day and reset counters.
             if self.agent.clock_minutes >= 1440:
                 self.agent.clock_minutes = 0
-                print("\n" + "=" * 60)
-                print(
-                    f"DAY {self.agent.day_count} SUMMARY | "
-                    f"Total consumption: {self.agent.total_daily_consumption_kwh:.3f} kWh"
-                )
-                print("=" * 60)
 
                 self.agent.day_count += 1
                 self.agent.reset_daily_energy_totals()
 
-                print("\n" + "=" * 60)
-                print(f"NEW SIMULATED DAY {self.agent.day_count} ({self.agent.season.upper()})")
-                print("=" * 60)
-
     async def setup(self):
-        print(f"WorldAgent [{self.name}] starting simulation...")
-        print(f"Season: {self.season.title()}, Speed: {SIMULATION_SPEED}s/hour")
 
         # Start behaviors
         self.add_behaviour(self.WorldSimulationBehaviour(period=SIMULATION_SPEED))

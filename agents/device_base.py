@@ -262,7 +262,6 @@ class Device(Agent):
             await behaviour.send(peer_msg)
             self._log_p2p(requester, peer_jid, "REQUEST to turn ON", event="REQUEST", tx_id=tx_id)
 
-        print(f"[{self.name}] Started negotiation tx={tx_id[:8]} with peers={len(self.peers)}")
 
     async def _register_power_reply(self, data, msg_sender, behaviour):
         tx_id = data.get("transaction_id")
@@ -414,7 +413,6 @@ class Device(Agent):
                     state_changed_rules = [r for r, _, _, state_changed in all_rule_results if state_changed]
                     if state_changed_rules:
                         for rule in state_changed_rules:
-                            print(f"[{self.agent.name}] [OK] {rule.name}: {rule.command.upper()}")
 
                             # Se ligar, envia Broadcast de Intenção aos Peers (Negociação)
                             if rule.command == "on" and self.agent.peers:
@@ -428,8 +426,6 @@ class Device(Agent):
                                 "state": rule.command.upper(),
                             })
                             await self.send(notify_msg)
-                    else:
-                        print(f"[{self.agent.name}] {self.agent.get_log_info(world_state)}")
 
                     if GUI_AVAILABLE:
                         state = get_simulation_state()
@@ -470,9 +466,6 @@ class Device(Agent):
                         # Calculate my current priority
                         my_priority = self.agent.current_priority if self.agent.current_priority is not None else 3
                         current_power_kw = self.agent.get_power_consumption_kw()
-
-                        print(f"[{self.agent.name}] Received power_request tx={str(tx_id)[:8]} from {requester} "
-                              f"(their priority: {req_priority}, my priority: {my_priority})")
 
                         should_shed = (
                             projected_total_kw > max_power_kw
@@ -551,11 +544,6 @@ class Device(Agent):
                     await self.agent._finalize_negotiation(tx_id, timed_out=True, behaviour=self)
 
     async def setup(self):
-        print(f"Agent [{self.name}] ({self.device_type.title()}) started with dynamic priority (0=highest)")
-        if self.rules:
-            print(f"  - Rules configured: {len(self.rules)}")
-            for rule in self.rules:
-                print(f"    - {rule}")
                 
         from spade.template import Template
         from config import AGENTS

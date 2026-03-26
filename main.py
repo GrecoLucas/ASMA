@@ -6,13 +6,10 @@ from agents import AirConditioner, Refrigerator
 from gui import start_gui
 
 async def main():
-    print("Starting Smart Home Energy Management System...")
-    print(f"Simulation speed: 1 hour = {SIMULATION_SPEED} real seconds.\n")
 
     # Start GUI in separate thread
     gui_thread = Thread(target=start_gui, daemon=True)
     gui_thread.start()
-    print("GUI started...")
 
     # 1. Instantiate Device Agents
     ac_jid = AGENTS["ac_livingroom"]
@@ -36,7 +33,6 @@ async def main():
         await world_agent.stop()
         await ac_livingroom.stop()
         await fridge.stop()
-        print("System shut down successfully.")
 
 if __name__ == "__main__":
     asyncio.run(main())

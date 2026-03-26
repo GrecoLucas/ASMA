@@ -1,26 +1,145 @@
 # Regras dos Agentes e Comunicação P2P (Smart Home)
 
-Este documento centraliza as regras embasadas em cada agente operante do sistema e detalha a arquitetura de **Comunicação P2P e Load Shedding (Deslastre de Carga)** baseada em prioridades que rege a harmonia da casa inteligente.
+Este documento descreve as regras ativas dos agentes e o protocolo real de comunicação P2P com negociação de potência e load shedding.
 
 ---
 
+## 1. Escala de Prioridade
 
-## 2. Visão Geral dos Nossos Agentes em Regra
+A prioridade segue escala numérica invertida: quanto menor o número, maior a prioridade.
 
-As prioridades acompanham um ranqueamento numérico invertido. **Números pequenos reinam impunemente sobre os pares paralelos de números maiores.**
+- `0`: prioridade máxima (crítico)
+- `1-2`: alta
+- `3`: média
+- `4-5`: baixa
 
-### 2.1. O Ar Condicionado (Air Conditioner)
-- **Papel:** Refrigeração ambiental focada totalmente na manutenção confortável do clima interior.
-- **Prioridade:** `5` (Mínima, perante a geladeira). A climatização cede sob pressão a aparelhos estruturais aquando de possíveis conflitos estipulados de P2P.
-- **Consumo Padrão:** Em Ativo (`1.35 kW`) | Em Inativo/Idle (`0.08 kW`).
-- **Árvore de Regras (`rules`):**
-  - **`AC On - Too Hot`**: Se o sensor térmico do ambiente ditar uma temperatura acima de `Target + Margem` *(ex: Alvo de 22°C + Margem de 2°C = Acima de 24°C)*, ativa o protocolo de inicialização e liga-se.
-  - **`AC Off - Cool Enough`**: Se a temperatura real baixar perante o valor de `Target - Margem` *(ex: Abaixo dos 20°C)*, revoga o ciclo fechando os compressores frios da unidade residencial.
+Em conflitos de potência, dispositivos com prioridade numérica maior podem ser forçados a ceder carga para dispositivos mais prioritários.
 
-### 2.2. A Geladeira Inteligente (Refrigerator)
-- **Papel:** Congelamento contínuo inabalável em nome da longevidade alimentar no lar.
-- **Prioridade:** `1` (A Prioridade Suprema Imbatível). Este equipamento passa sempre perfeitamente isento a um *Shedding* indesejado face a um Ar Condicionado.
-- **Consumo Padrão:** Em Ativo (`0.18 kW`) | Em Inativo/Idle (`0.03 kW`).
-- **Árvore de Regras (`rules`):**
-  - **`Compressor On - Warming Up`**: Se os simuladores registarem um aquecimento da cápsula interior (*> Target + Margem*, como por exemplo acima dos 5°C), a geladeira liga o motor de compressão.
-  - **`Compressor Off - Cool Enough`**: Uma vez batido o arrefecimento sub-limite em *(-)* (abaixo de 3°C), os compressores pausam para o patamar de *IDLE* ou *Stand By*.
+---
+
+## 2. Regras dos Agentes
+
+### 2.1. Ar Condicionado (AirConditioner)
+
+- **Papel:** conforto térmico do ambiente.
+- **Consumo:** ativo `1.35 kW` | idle `0.08 kW`.
+- **Regras de atuação:**
+  - `AC On - Too Hot`: liga quando `temperatura > target + margem`.
+  - `AC Off - Cool Enough`: desliga quando `temperatura < target - margem`.
+- **Prioridade:** dinâmica, baseada no desvio absoluto em relação ao alvo (`|temp_atual - target|`):
+  - `>= 8°C` -> prioridade `0`
+  - `>= 6°C` -> prioridade `1`
+  - `>= 4°C` -> prioridade `2`
+  - `>= 2°C` -> prioridade `3`
+  - `< 2°C` -> prioridade `4`
+  - sem leitura de temperatura -> prioridade `3`
+
+### 2.2. Geladeira (Refrigerator)
+
+- **Papel:** manter conservação dos alimentos.
+- **Consumo:** compressor ativo `0.18 kW` | idle `0.03 kW`.
+- **Regras de atuação:**
+  - `Compressor On - Warming Up`: liga quando `temperatura_interna > target + margem`.
+  - `Compressor Off - Cool Enough`: desliga quando `temperatura_interna < target - margem`.
+- **Prioridade:** fixa em `0` (sempre máxima).
+
+### 2.3 Máquina de Lavar (WashingMachine)
+
+- **Papel:** lavar roupas.
+- **Consumo:** ativo `0.5 kW` | idle `0.05 kW`.
+- **Regras de atuação:**
+  - `Start Washing - numero de roupas > 0`: liga quando há roupas para lavar.
+  - O número de roupas pendentes aumenta com o tempo quando a máquina está parada.
+- **Prioridade:** dinâmica e crescente com o acúmulo de roupa (quanto mais roupa acumulada, mais urgente lavar e menor o valor numérico da prioridade).
+  - pouca roupa -> prioridade baixa (`5`)
+  - roupa moderada -> prioridade média (`4-3`)
+  - muita roupa acumulada -> prioridade alta (`2-1`)
+  - carga crítica/acúmulo prolongado -> prioridade muito alta (`0`)
+
+---
+
+## 3. Comunicação P2P Correta (Implementada)
+
+Quando um dispositivo precisa ligar e existe configuração com peers, a ligação passa por negociação distribuída.
+
+### 3.1. Broadcast Contínuo de Estado de Potência
+
+Cada agente envia periodicamente para os peers um `power_status` com:
+
+- `device_name`
+- `power_kw` atual
+- `timestamp`
+
+Esses dados alimentam a estimativa local de consumo total (`peer_power_status`).
+
+### 3.2. Fase de Pedido (`power_request`)
+
+Ao disparar uma regra de `on` com peers ativos:
+
+1. O agente cria um `transaction_id`.
+2. Calcula potência projetada ao ligar (`projected_total_kw`).
+3. Envia `power_request` para todos os peers contendo:
+   - `transaction_id`
+   - `requester`
+   - `priority` do solicitante
+   - `power_needed_kw`
+   - `projected_total_kw`
+   - `max_power_kw`
+
+### 3.3. Fase de Resposta (`power_reply`)
+
+Cada peer decide localmente:
+
+- `should_shed = True` quando:
+  - `projected_total_kw > max_power_kw`, e
+  - o peer está acima do consumo idle, e
+  - `my_priority > requester_priority` (peer menos prioritário)
+
+- `decision = accept` quando:
+  - está dentro do limite (`projected_total_kw <= max_power_kw`), ou
+  - consegue ceder carga (`should_shed = True`)
+
+- `decision = reject` quando está acima do limite e não pode ceder.
+
+Cada reply inclui `decision`, `should_shed`, `reason` e `transaction_id`.
+
+### 3.4. Fecho da Negociação (`power_commit` ou `power_abort`)
+
+O solicitante fecha a transação quando:
+
+- recebe todas as respostas esperadas, ou
+- ocorre timeout de negociação.
+
+Regra de fecho:
+
+- **COMMIT**: sem rejeições, com respostas recebidas e sem timeout.
+- **ABORT**: qualquer rejeição ou timeout.
+
+No **COMMIT**, o solicitante liga o atuador e notifica o mundo com `state_changed = ON`.
+No **ABORT**, a regra de `on` é liberada para tentar novamente em ciclo futuro.
+
+### 3.5. Load Shedding após COMMIT
+
+Peers que haviam aceitado com `should_shed = True` aplicam shedding ao receber `power_commit`:
+
+- definem `shed_timeout = 3` ciclos
+- executam regras de `off`
+- bloqueiam religamento imediato durante penalidade
+- notificam o mundo como `OFF (SHED)`
+
+---
+
+## 4. Comportamento de Segurança e Timeout
+
+- Existe comportamento periódico para abortar negociações expiradas.
+- Se um agente está em penalidade de shedding (`shed_timeout > 0`), uma regra `on` não é executada.
+
+---
+
+## 5. Resumo Operacional
+
+- A geladeira permanece estruturalmente prioritária (`0`).
+- O ar condicionado adapta prioridade conforme desconforto térmico.
+- A máquina de lavar eleva prioridade conforme o tempo passa e a roupa acumula.
+- A decisão de ligar em modo distribuído depende de consenso P2P.
+- Em sobrecarga, dispositivos menos prioritários cedem carga quando possível.

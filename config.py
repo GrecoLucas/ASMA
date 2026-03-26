@@ -2,7 +2,7 @@
 
 XMPP_SERVER = "localhost"
 PASSWORD = "password_super_secreta"
-MAX_POWER_KW = 7.0  # Global power limit of the house for P2P negotiation
+MAX_POWER_KW = 1.6  # Global power limit of the house for P2P negotiation
 
 # JIDS of each agent
 AGENTS = {
