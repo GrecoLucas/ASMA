@@ -74,6 +74,25 @@ class DevicesPanel:
             info["consumption"] = ttk.Label(device_frame, text="Hourly: -- kWh | Daily: -- kWh", style="Info.TLabel")
             info["consumption"].pack(anchor=tk.W, pady=2)
 
+        elif device_type == "washing_machine":
+            info["priority"] = ttk.Label(device_frame, text="Priority: --", style="Info.TLabel")
+            info["priority"].pack(anchor=tk.W, pady=2)
+
+            info["motor_status"] = ttk.Label(device_frame, text="Motor: --", style="Heading.TLabel")
+            info["motor_status"].pack(anchor=tk.W, pady=2)
+
+            info["pending_clothes"] = ttk.Label(device_frame, text="Pending Clothes: --", style="Heading.TLabel")
+            info["pending_clothes"].pack(anchor=tk.W, pady=2)
+
+            info["wash_cycles"] = ttk.Label(device_frame, text="Wash Cycles Remaining: --", style="Heading.TLabel")
+            info["wash_cycles"].pack(anchor=tk.W, pady=2)
+
+            info["power"] = ttk.Label(device_frame, text="Power: -- kW", style="Heading.TLabel")
+            info["power"].pack(anchor=tk.W, pady=2)
+
+            info["consumption"] = ttk.Label(device_frame, text="Hourly: -- kWh | Daily: -- kWh", style="Info.TLabel")
+            info["consumption"].pack(anchor=tk.W, pady=2)
+
         self.device_frames[device_name] = {
             "frame": device_frame,
             "labels": info,
@@ -162,6 +181,40 @@ class DevicesPanel:
                 )
                 device_info["labels"]["target"].config(
                     text=f"Target Temp: {target_temp:.1f} °C ±{temp_margin:.1f}°C"
+                )
+                device_info["labels"]["power"].config(
+                    text=f"Power: {power_kw:.2f} kW / {max_power_kw:.2f} kW"
+                )
+                device_info["labels"]["consumption"].config(
+                    text=f"Hourly: {hourly_consumption_kwh:.3f} kWh | Daily: {daily_consumption_kwh:.3f} kWh"
+                )
+            elif device_info["type"] == "washing_machine":
+                motor_status = device_state.get("motor_status", "Unknown")
+                pending_clothes = device_state.get("pending_clothes", 0)
+                wash_cycles_remaining = device_state.get("cycle_steps_remaining", 0)
+                power_kw = device_state.get("power_kw", 0.0)
+                max_power_kw = device_state.get("max_power_kw", 0.0)
+                hourly_consumption_kwh = device_state.get("hourly_consumption_kwh", 0.0)
+                daily_consumption_kwh = device_state.get("daily_consumption_kwh", 0.0)
+
+                priority = device_state.get("priority", "-")
+
+                # Update labels
+                device_info["labels"]["priority"].config(text=f"Priority: {priority}")
+
+                # Motor status with color coding
+                if motor_status == 'WASHING':
+                    motor_text = "Motor: ON"
+                    motor_color = "#00ff88"  # Green
+                else:
+                    motor_text = "Motor: OFF"
+                    motor_color = "#ff3333"  # Red
+                device_info["labels"]["motor_status"].config(text=motor_text, foreground=motor_color)
+                device_info["labels"]["pending_clothes"].config(
+                    text=f"Pending Clothes: {pending_clothes}"
+                )
+                device_info["labels"]["wash_cycles"].config(
+                    text=f"Wash Cycles Remaining: {wash_cycles_remaining}"
                 )
                 device_info["labels"]["power"].config(
                     text=f"Power: {power_kw:.2f} kW / {max_power_kw:.2f} kW"
