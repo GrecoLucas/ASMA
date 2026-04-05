@@ -211,12 +211,18 @@ class Device(Agent):
         if not GUI_AVAILABLE:
             return
         state = get_simulation_state()
-        tag_parts = []
-        if event:
-            tag_parts.append(event)
-        if tx_id:
-            tag_parts.append(f"tx={tx_id[:8]}")
-        tag_prefix = f"[{' | '.join(tag_parts)}] " if tag_parts else ""
+        
+        # Format the event clearly, omitting the raw technical tx_id
+        tag_prefix = f"[{event}] " if event else ""
+        
+        # If the content matches simple action words, simplify
+        if "REQUEST to turn ON" in content:
+            content = "Requests power to turn ON."
+        elif "COMMIT applied, turned ON" in content:
+            content = "Consensus reached. Turning ON."
+        elif "ABORT" in content:
+            content = "Aborting requested action."
+            
         state.add_message(
             self._normalize_agent_name(sender),
             self._normalize_agent_name(receiver),

@@ -2,7 +2,7 @@ import asyncio
 from threading import Thread
 from config import AGENTS, PASSWORD, SIMULATION_SPEED
 from simulation.enviroment import WorldAgent
-from agents import AirConditioner, Refrigerator, WashingMachine
+from agents import AirConditioner, Refrigerator, WashingMachine, SolarPanelAgent, BatteryAgent
 from gui import start_gui
 
 async def main():
@@ -15,18 +15,25 @@ async def main():
     ac_jid = AGENTS["ac_livingroom"]
     fridge_jid = AGENTS["fridge"]
     whashing_machine_jid = AGENTS["washing_machine"]
+    solar_jid = AGENTS["solar"]
+    battery_jid = AGENTS["battery"]
 
-    jid_list = [ac_jid, fridge_jid, whashing_machine_jid]
+    jid_list = [ac_jid, fridge_jid, whashing_machine_jid, solar_jid, battery_jid]
 
     ac_livingroom = AirConditioner(ac_jid, PASSWORD, target_temp=21, temp_margin=2, peers=[jid for jid in jid_list if jid != ac_jid])
     fridge = Refrigerator(fridge_jid, PASSWORD, target_temp=4, temp_margin=1, peers=[jid for jid in jid_list if jid != fridge_jid])
-    washingmachine = WashingMachine(AGENTS["washing_machine"], PASSWORD, peers=[jid for jid in jid_list if jid != whashing_machine_jid])
+    washingmachine = WashingMachine(whashing_machine_jid, PASSWORD, peers=[jid for jid in jid_list if jid != whashing_machine_jid])
+    solar_panel = SolarPanelAgent(solar_jid, PASSWORD, peers=[jid for jid in jid_list if jid != solar_jid])
+    battery = BatteryAgent(battery_jid, PASSWORD, peers=[jid for jid in jid_list if jid != battery_jid])
+    
     world_agent = WorldAgent(AGENTS["world"], PASSWORD, season="summer", receivers=jid_list)
 
     # Start all agents (devices first, then world broadcaster)
     await ac_livingroom.start(auto_register=True)
     await fridge.start(auto_register=True)
     await washingmachine.start(auto_register=True)
+    await solar_panel.start(auto_register=True)
+    await battery.start(auto_register=True)
     await world_agent.start(auto_register=True)
 
     try:
@@ -39,6 +46,8 @@ async def main():
         await ac_livingroom.stop()
         await fridge.stop()
         await washingmachine.stop()
+        await solar_panel.stop()
+        await battery.stop()
 
 if __name__ == "__main__":
     asyncio.run(main())

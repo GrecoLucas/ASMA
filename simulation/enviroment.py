@@ -25,6 +25,8 @@ class WorldAgent(Agent):
         self.hourly_consumption_by_slot = {}
         self.total_daily_consumption_kwh = 0.0
         self.last_hour_consumption_kwh = 0.0
+        self.total_daily_cost_euro = 0.0
+        self.total_renewable_kwh = 0.0
         self.last_world_state = {}
 
         # Base parameters for different seasons
@@ -44,6 +46,8 @@ class WorldAgent(Agent):
         self.device_daily_consumption_kwh = {}
         self.hourly_consumption_by_slot = {}
         self.total_daily_consumption_kwh = 0.0
+        self.total_daily_cost_euro = 0.0
+        self.total_renewable_kwh = 0.0
         self.last_hour_consumption_kwh = 0.0
 
     def register_device_consumption(self, device_name, day, hour, minute, consumption_kwh):
@@ -62,6 +66,10 @@ class WorldAgent(Agent):
             self.device_daily_consumption_kwh.get(device_name, 0.0) + consumption_kwh
         )
         self.total_daily_consumption_kwh += consumption_kwh
+        # Track renewable specifically (solar panel inherently sends negative consumption)
+        if device_name == "solar" and consumption_kwh < 0:
+            self.total_renewable_kwh += abs(consumption_kwh)
+
         self.last_hour_consumption_kwh = round(sum(slot_data.values()), 3)
 
     def generate_temperature(self, hour):
@@ -142,6 +150,8 @@ class WorldAgent(Agent):
             "day": self.day_count,
             "hourly_consumption_total_kwh": round(self.last_hour_consumption_kwh, 3),
             "daily_consumption_total_kwh": round(self.total_daily_consumption_kwh, 3),
+            "daily_cost_euro": round(self.total_daily_cost_euro, 3),
+            "daily_renewable_kwh": round(self.total_renewable_kwh, 3),
             "device_daily_consumption_kwh": {
                 device: round(total, 3)
                 for device, total in self.device_daily_consumption_kwh.items()
@@ -191,6 +201,8 @@ class WorldAgent(Agent):
                             merged_state = self.agent.last_world_state.copy()
                             merged_state["hourly_consumption_total_kwh"] = round(self.agent.last_hour_consumption_kwh, 3)
                             merged_state["daily_consumption_total_kwh"] = round(self.agent.total_daily_consumption_kwh, 3)
+                            merged_state["daily_cost_euro"] = round(self.agent.total_daily_cost_euro, 3)
+                            merged_state["daily_renewable_kwh"] = round(self.agent.total_renewable_kwh, 3)
                             merged_state["device_daily_consumption_kwh"] = {
                                 device: round(total, 3)
                                 for device, total in self.agent.device_daily_consumption_kwh.items()
@@ -202,6 +214,9 @@ class WorldAgent(Agent):
     class WorldSimulationBehaviour(PeriodicBehaviour):
         """Behavior that simulates world conditions and broadcasts them."""
         async def run(self):
+            if GUI_AVAILABLE and get_simulation_state().is_paused:
+                return
+
             # Simulate current hour state first, then advance to the next hour.
             state = self.agent.generate_world_state()
 
@@ -210,6 +225,21 @@ class WorldAgent(Agent):
 
             # Update state with modified temperature after device effects
             state["temperature"] = round(self.agent.current_temperature, 1)
+
+            # Calculate cost for the current step based on net house consumption
+            price = state["energy_price"]
+            net_power = 0.0
+            if GUI_AVAILABLE:
+                gui_state = get_simulation_state()
+                devs = gui_state.get_all_devices()
+                for d in devs:
+                    d_state = gui_state.get_device_state(d)
+                    net_power += d_state.get("power_kw", 0.0)
+            
+            if net_power > 0:
+                step_consumption = net_power * (MINUTES_PER_STEP / 60.0)
+                self.agent.total_daily_cost_euro += step_consumption * price
+
             self.agent.last_world_state = state.copy()
 
 

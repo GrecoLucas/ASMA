@@ -21,11 +21,11 @@ class LogPanel:
 
     def _line_tag(self, line):
         text = line.upper()
-        if "REPLY REJECT" in text:
+        if "REPLY REJECT" in text or "ABORT" in text or "SHED" in text:
             return "reject"
-        if "REPLY ACCEPT" in text:
+        if "REPLY ACCEPT" in text or "CONSENSUS REACHED" in text:
             return "accept"
-        if "[REQUEST" in text or "REQUEST TO TURN ON" in text:
+        if "[REQUEST" in text or "REQUESTS POWER" in text:
             return "request"
         return "default"
 

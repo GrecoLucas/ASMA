@@ -21,7 +21,11 @@ class SimulationState:
         }
         self.devices = {}
         self.messages = []
-        self.last_message_key = None
+        self.is_paused = False
+
+    def toggle_pause(self):
+        with self.lock:
+            self.is_paused = not self.is_paused
 
     def update_world_state(self, state):
         with self.lock:
@@ -45,20 +49,32 @@ class SimulationState:
 
     def add_message(self, sender, receiver, content):
         with self.lock:
-            from datetime import datetime
-            message_key = (sender, receiver, content)
-            if self.last_message_key == message_key:
-                return
-
-            timestamp = datetime.now().strftime("%H:%M:%S")
-            self.messages.append(f"[{timestamp}] {sender} -> {receiver}: {content}")
-            self.last_message_key = message_key
+            hour = self.world_state.get("hour", 0)
+            minute = self.world_state.get("minute", 0)
+            sim_time = f"[{hour:02d}:{minute:02d}]"
+            
+            if self.messages and isinstance(self.messages[-1], dict):
+                last = self.messages[-1]
+                if last['sender'] == sender and last['content'] == content and last['time'] == sim_time:
+                    if receiver not in last['receivers']:
+                        last['receivers'].append(receiver)
+                    return
+            
+            msg = {'time': sim_time, 'sender': sender, 'receivers': [receiver], 'content': content}
+            self.messages.append(msg)
             if len(self.messages) > 100:
                 self.messages.pop(0)
 
     def get_messages(self):
         with self.lock:
-            return self.messages.copy()
+            formatted = []
+            for m in self.messages:
+                if isinstance(m, dict):
+                    receivers = ", ".join(m['receivers'])
+                    formatted.append(f"{m['time']} {m['sender']} -> {receivers}: {m['content']}")
+                else:
+                    formatted.append(m)
+            return formatted
 
 
 class SimulationGUI:
@@ -97,75 +113,97 @@ class SimulationGUI:
 
     def create_widgets(self):
         """Create main GUI widgets."""
-        # Title outside the paned window
-        title = ttk.Label(self.root, text="Smart Home Energy Management System", style="Title.TLabel")
-        title.pack(pady=10)
+        
+        # Header frame with title and controls
+        header_frame = ttk.Frame(self.root)
+        header_frame.pack(fill=tk.X, padx=10, pady=5)
+        
+        title = ttk.Label(header_frame, text="Smart Home Energy Management System", style="Title.TLabel")
+        title.pack(side=tk.LEFT, pady=5)
+        
+        # Play/Pause button
+        self.pause_btn = ttk.Button(header_frame, text="⏸ Pause", command=self.toggle_pause)
+        self.pause_btn.pack(side=tk.RIGHT, pady=5)
 
-        # PanedWindow for Left/Right separation
-        paned = tk.PanedWindow(self.root, orient=tk.HORIZONTAL)
+        # Top Frame (World State)
+        top_frame = ttk.Frame(self.root)
+        top_frame.pack(fill=tk.X, padx=10, pady=(0, 5))
+        self.create_world_panel(top_frame)
+
+        # PanedWindow for Center (Devices) and Bottom (Logs)
+        paned = tk.PanedWindow(self.root, orient=tk.VERTICAL)
         paned.pack(fill=tk.BOTH, expand=True, padx=10, pady=(0, 10))
 
-        # Left Frame
-        left_frame = ttk.Frame(paned)
-        paned.add(left_frame, minsize=400)
+        # Center Frame (Devices)
+        center_frame = ttk.Frame(paned)
+        paned.add(center_frame, minsize=300)
 
-        # Right Frame (Logs)
-        right_frame = ttk.Frame(paned)
-        paned.add(right_frame, minsize=350)
-
-        # World State Panel
-        self.create_world_panel(left_frame)
+        # Bottom Frame (Logs)
+        bottom_frame = ttk.Frame(paned)
+        paned.add(bottom_frame, minsize=100)
 
         # Devices Panel
-        self.devices_panel = DevicesPanel(left_frame)
+        self.devices_panel = DevicesPanel(center_frame)
         
         # Logs Panel
-        self.log_panel = LogPanel(right_frame)
+        self.log_panel = LogPanel(bottom_frame)
+
+    def toggle_pause(self):
+        self.state.toggle_pause()
+        if self.state.is_paused:
+            self.pause_btn.config(text="▶ Play")
+        else:
+            self.pause_btn.config(text="⏸ Pause")
 
     def create_world_panel(self, parent):
         """Create world state display panel."""
         world_frame = ttk.LabelFrame(parent, text="World State", padding=10)
-        world_frame.pack(fill=tk.X, pady=(0, 15))
+        world_frame.pack(fill=tk.X)
 
         # Create a grid for world info
         info_frame = ttk.Frame(world_frame)
         info_frame.pack(fill=tk.X)
 
-        # Row 1: Time and Season
+        # Row 1: Time, Season, Temp, Solar, Price, Day
         self.time_label = ttk.Label(info_frame, text="Time: --:-- | Season: ----", style="Value.TLabel")
-        self.time_label.grid(row=0, column=0, columnspan=4, sticky=tk.W, pady=5)
+        self.time_label.grid(row=0, column=0, columnspan=2, sticky=tk.W, pady=2)
 
-        # Row 2: Environmental data
-        ttk.Label(info_frame, text="Temperature:", style="Heading.TLabel").grid(row=1, column=0, sticky=tk.W, padx=5)
+        ttk.Label(info_frame, text="Temp:", style="Heading.TLabel").grid(row=0, column=2, sticky=tk.W, padx=5)
         self.temp_label = ttk.Label(info_frame, text="-- °C", style="Value.TLabel")
-        self.temp_label.grid(row=1, column=1, sticky=tk.W, padx=5)
+        self.temp_label.grid(row=0, column=3, sticky=tk.W, padx=5)
 
-        ttk.Label(info_frame, text="Solar Production:", style="Heading.TLabel").grid(row=1, column=2, sticky=tk.W, padx=5)
+        ttk.Label(info_frame, text="Solar:", style="Heading.TLabel").grid(row=0, column=4, sticky=tk.W, padx=5)
         self.solar_label = ttk.Label(info_frame, text="-- kW", style="Value.TLabel")
-        self.solar_label.grid(row=1, column=3, sticky=tk.W, padx=5)
+        self.solar_label.grid(row=0, column=5, sticky=tk.W, padx=5)
 
-        # Row 3: Price and day
-        ttk.Label(info_frame, text="Energy Price:", style="Heading.TLabel").grid(row=2, column=0, sticky=tk.W, padx=5, pady=5)
+        ttk.Label(info_frame, text="Price:", style="Heading.TLabel").grid(row=0, column=6, sticky=tk.W, padx=5)
         self.price_label = ttk.Label(info_frame, text="-- €/kWh", style="Value.TLabel")
-        self.price_label.grid(row=2, column=1, sticky=tk.W, padx=5, pady=5)
-
-        ttk.Label(info_frame, text="Day:", style="Heading.TLabel").grid(row=2, column=2, sticky=tk.W, padx=5, pady=5)
+        self.price_label.grid(row=0, column=7, sticky=tk.W, padx=5)
+        
+        ttk.Label(info_frame, text="Day:", style="Heading.TLabel").grid(row=0, column=8, sticky=tk.W, padx=5)
         self.day_label = ttk.Label(info_frame, text="--", style="Value.TLabel")
-        self.day_label.grid(row=2, column=3, sticky=tk.W, padx=5, pady=5)
+        self.day_label.grid(row=0, column=9, sticky=tk.W, padx=5)
 
-        # Row 4: Energy consumption
-        ttk.Label(info_frame, text="Last Hour Consumption:", style="Heading.TLabel").grid(row=3, column=0, sticky=tk.W, padx=5, pady=5)
+        # Row 2: Consumptions, Costs, renewable, power usage
+        ttk.Label(info_frame, text="Last Hour Cons:", style="Heading.TLabel").grid(row=1, column=0, sticky=tk.W, padx=5, pady=2)
         self.hourly_consumption_label = ttk.Label(info_frame, text="-- kWh", style="Value.TLabel")
-        self.hourly_consumption_label.grid(row=3, column=1, sticky=tk.W, padx=5, pady=5)
+        self.hourly_consumption_label.grid(row=1, column=1, sticky=tk.W, padx=5, pady=2)
 
-        ttk.Label(info_frame, text="Daily Total Consumption:", style="Heading.TLabel").grid(row=3, column=2, sticky=tk.W, padx=5, pady=5)
+        ttk.Label(info_frame, text="Daily Cons:", style="Heading.TLabel").grid(row=1, column=2, sticky=tk.W, padx=5, pady=2)
         self.daily_consumption_label = ttk.Label(info_frame, text="-- kWh", style="Value.TLabel")
-        self.daily_consumption_label.grid(row=3, column=3, sticky=tk.W, padx=5, pady=5)
+        self.daily_consumption_label.grid(row=1, column=3, sticky=tk.W, padx=5, pady=2)
 
-        # Row 5: Current Power Consumption vs Max (NEW)
-        ttk.Label(info_frame, text="Power Usage:", style="Heading.TLabel").grid(row=4, column=0, sticky=tk.W, padx=5, pady=5)
+        ttk.Label(info_frame, text="Daily Grid Cost:", style="Heading.TLabel").grid(row=1, column=4, sticky=tk.W, padx=5, pady=2)
+        self.cost_label = ttk.Label(info_frame, text="-- €", style="Value.TLabel")
+        self.cost_label.grid(row=1, column=5, sticky=tk.W, padx=5, pady=2)
+
+        ttk.Label(info_frame, text="Renewable Share:", style="Heading.TLabel").grid(row=1, column=6, sticky=tk.W, padx=5, pady=2)
+        self.renewable_label = ttk.Label(info_frame, text="-- %", style="Value.TLabel")
+        self.renewable_label.grid(row=1, column=7, sticky=tk.W, padx=5, pady=2)
+
+        ttk.Label(info_frame, text="Net Power:", style="Heading.TLabel").grid(row=1, column=8, sticky=tk.W, padx=5, pady=2)
         self.power_usage_label = ttk.Label(info_frame, text="-- kW / 7.00 kW", style="Value.TLabel")
-        self.power_usage_label.grid(row=4, column=1, columnspan=3, sticky=tk.W, padx=5, pady=5)
+        self.power_usage_label.grid(row=1, column=9, sticky=tk.W, padx=5, pady=2)
 
 
 
@@ -184,6 +222,13 @@ class SimulationGUI:
         self.day_label.config(text=f"Day {world.get('day') or 0}")
         self.hourly_consumption_label.config(text=f"{world.get('hourly_consumption_total_kwh') or 0.0:.3f} kWh")
         self.daily_consumption_label.config(text=f"{world.get('daily_consumption_total_kwh') or 0.0:.3f} kWh")
+        self.cost_label.config(text=f"{world.get('daily_cost_euro') or 0.0:.3f} €", foreground="#ffb347")
+        
+        # Calculate renewable percentage
+        total_kwh = world.get('daily_consumption_total_kwh') or 0.0
+        renewable_kwh = world.get('daily_renewable_kwh') or 0.0
+        pct = (renewable_kwh / total_kwh * 100) if total_kwh > 0 else 0.0
+        self.renewable_label.config(text=f"{pct:.1f} %", foreground="#00ff88")
 
         # Calculate current total power consumption from all devices
         from config import MAX_POWER_KW
@@ -194,8 +239,11 @@ class SimulationGUI:
             total_power += device_state.get("power_kw", 0.0)
 
         # Update power usage display with color coding
-        power_percentage = (total_power / MAX_POWER_KW) * 100
-        if power_percentage >= 100:
+        # For Net power, it can be negative (injecting to grid).
+        power_percentage = (total_power / MAX_POWER_KW) * 100 if MAX_POWER_KW > 0 else 0
+        if total_power < 0:
+            power_color = "#00d4ff" # Blue - injecting
+        elif power_percentage >= 100:
             power_color = "#ff3333"  # Red - at or over limit
         elif power_percentage >= 85:
             power_color = "#ff9900"  # Orange - warning
@@ -205,7 +253,7 @@ class SimulationGUI:
             power_color = "#00ff88"  # Green - normal
 
         self.power_usage_label.config(
-            text=f"{total_power:.2f} kW / {MAX_POWER_KW:.2f} kW ({power_percentage:.0f}%)",
+            text=f"{total_power:.2f} kW / {MAX_POWER_KW:.2f} kW",
             foreground=power_color
         )
 

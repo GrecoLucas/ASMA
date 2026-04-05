@@ -24,11 +24,18 @@ class DevicesPanel:
         scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
 
         self.device_frames = {}
+        self.current_col = 0
+        self.current_row = 0
 
     def add_device_frame(self, device_name, device_type):
         """Add a device display frame."""
         device_frame = ttk.LabelFrame(self.devices_container, text=f"{device_name.title()}", padding=10)
-        device_frame.pack(fill=tk.X, pady=5)
+        device_frame.grid(row=self.current_row, column=self.current_col, padx=10, pady=10, sticky="nsew")
+        
+        self.current_col += 1
+        if self.current_col > 2: # 3 items per row
+            self.current_col = 0
+            self.current_row += 1
 
         # Device info labels
         info = {}
@@ -88,6 +95,32 @@ class DevicesPanel:
             info["wash_cycles"].pack(anchor=tk.W, pady=2)
 
             info["power"] = ttk.Label(device_frame, text="Power: -- kW", style="Heading.TLabel")
+            info["power"].pack(anchor=tk.W, pady=2)
+
+            info["consumption"] = ttk.Label(device_frame, text="Hourly: -- kWh | Daily: -- kWh", style="Info.TLabel")
+            info["consumption"].pack(anchor=tk.W, pady=2)
+
+        elif device_type == "solar_panel":
+            info["priority"] = ttk.Label(device_frame, text="Priority: --", style="Info.TLabel")
+            info["priority"].pack(anchor=tk.W, pady=2)
+
+            info["status"] = ttk.Label(device_frame, text="Status: --", style="Heading.TLabel")
+            info["status"].pack(anchor=tk.W, pady=2)
+
+            info["power"] = ttk.Label(device_frame, text="Power Generated: -- kW", style="Heading.TLabel")
+            info["power"].pack(anchor=tk.W, pady=2)
+
+        elif device_type == "battery":
+            info["priority"] = ttk.Label(device_frame, text="Priority: --", style="Info.TLabel")
+            info["priority"].pack(anchor=tk.W, pady=2)
+
+            info["status"] = ttk.Label(device_frame, text="Status: --", style="Heading.TLabel")
+            info["status"].pack(anchor=tk.W, pady=2)
+
+            info["charge"] = ttk.Label(device_frame, text="Charge: -- / -- kWh (--%)", style="Heading.TLabel")
+            info["charge"].pack(anchor=tk.W, pady=2)
+
+            info["power"] = ttk.Label(device_frame, text="Power Flow: -- kW", style="Heading.TLabel")
             info["power"].pack(anchor=tk.W, pady=2)
 
             info["consumption"] = ttk.Label(device_frame, text="Hourly: -- kWh | Daily: -- kWh", style="Info.TLabel")
@@ -222,3 +255,38 @@ class DevicesPanel:
                 device_info["labels"]["consumption"].config(
                     text=f"Hourly: {hourly_consumption_kwh:.3f} kWh | Daily: {daily_consumption_kwh:.3f} kWh"
                 )
+
+            elif device_info["type"] == "solar_panel":
+                status = device_state.get("status", "IDLE")
+                power_kw = device_state.get("power_kw", 0.0)
+                
+                device_info["labels"]["priority"].config(text="Priority: 5")
+                status_color = "#00d4ff" if status == "PRODUCING" else "#b0b0b0"
+                device_info["labels"]["status"].config(text=f"Status: {status}", foreground=status_color)
+                device_info["labels"]["power"].config(text=f"Power Generated: {abs(power_kw):.2f} kW")
+                
+            elif device_info["type"] == "battery":
+                status = device_state.get("status", "IDLE")
+                power_kw = device_state.get("power_kw", 0.0)
+                charge = device_state.get("charge_kwh", 0.0)
+                capacity = device_state.get("capacity_kwh", 0.0)
+                pct = device_state.get("charge_percent", 0.0)
+                hourly_consumption_kwh = device_state.get("hourly_consumption_kwh", 0.0)
+                daily_consumption_kwh = device_state.get("daily_consumption_kwh", 0.0)
+                
+                device_info["labels"]["priority"].config(text="Priority: 5")
+                
+                if status == "CHARGING": status_color = "#00ff88"
+                elif status == "DISCHARGING": status_color = "#ffb347"
+                else: status_color = "#00d4ff" if status == "FULL" else "#b0b0b0"
+                
+                device_info["labels"]["status"].config(text=f"Status: {status}", foreground=status_color)
+                
+                flow = "IDLE"
+                if power_kw > 0.01: flow = f"CHARGING at {power_kw:.2f} kW"
+                elif power_kw < -0.01: flow = f"DISCHARGING at {abs(power_kw):.2f} kW"
+                device_info["labels"]["power"].config(text=f"Power Flow: {flow}")
+                
+                device_info["labels"]["charge"].config(text=f"Charge: {charge:.2f} / {capacity:.2f} kWh ({pct:.0f}%)")
+                device_info["labels"]["consumption"].config(text=f"Hourly: {hourly_consumption_kwh:.3f} kWh | Daily: {daily_consumption_kwh:.3f} kWh")
+

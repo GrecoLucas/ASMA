@@ -56,6 +56,23 @@ Em conflitos de potência, dispositivos com prioridade numérica menor podem ser
   - muita roupa acumulada -> prioridade alta (`4`)
   - carga crítica/acúmulo prolongado -> prioridade muito alta (`5`)
 
+### 2.4 Painel Solar (SolarPanelAgent)
+
+- **Papel:** produtor de energia renovável.
+- **Consumo:** Injeta energia no sistema (valores de potência são calculados pelo `WorldAgent` e comunicados como valores negativos na rede P2P).
+- **Regras de atuação:**
+  - Sempre que a produção solar é > 0, injeta carga na rede de agentes, criando "folga" imediata no consumo global da casa e abatendo consumos nos limites `MAX_POWER_KW`.
+- **Prioridade:** fixa em `5` (não sofre shedding, pois injeta e não puxa energia).
+
+### 2.5 Bateria (BatteryAgent)
+
+- **Papel:** armazenamento e mitigação das contas de luz dinâmicas.
+- **Restrições:** Capacidade máxima definida (ex: `5.0 kWh`). Taxa de transferência máxima `2.0 kW`.
+- **Regras de atuação (Em Cascata):**
+  - `Charge`: Carrega energia consumindo os excedentes gerados (P2P Net Power < 0).
+  - `Discharge`: Descarrega ativamente ajudando a alimentar as cargas se o custo momentâneo (`energy_price`) for superior ao limite configurado (ex: `>= 0.15€/kWh`).
+- **Prioridade:** fixa em `5`.
+
 ---
 
 ## 3. Comunicação P2P Correta (Implementada)
@@ -141,5 +158,7 @@ Peers que haviam aceitado com `should_shed = True` aplicam shedding ao receber `
 - A geladeira permanece estruturalmente prioritária (`5`).
 - O ar condicionado adapta prioridade conforme desconforto térmico.
 - A máquina de lavar eleva prioridade conforme o tempo passa e a roupa acumula.
-- A decisão de ligar em modo distribuído depende de consenso P2P.
+- O painel solar anula permanentemente o consumo dos eletrodomésticos, distribuindo uma "folga" gratuita e imediata (redução da potência lida nativamente na negociação P2P).
+- A bateria é uma inteligência financeira e elétrica: armazena quando há excesso solar (rede no limite inferior) e devolve em pleno pico de preços (`energy_price`).
+- A decisão de ligar em modo distribuído depende de consenso P2P contínuo.
 - Em sobrecarga, dispositivos menos prioritários cedem carga quando possível.
