@@ -13,4 +13,5 @@ __all__ = [
     "AirConditioner",
     "Refrigerator",
     "WashingMachine",
+    "DishWasher",
 ]

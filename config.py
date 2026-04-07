@@ -12,6 +12,7 @@ AGENTS = {
     "fridge": f"fridge@{XMPP_SERVER}",
     "ac_livingroom": f"ac.livingroom@{XMPP_SERVER}",
     "washing_machine": f"washing_machine@{XMPP_SERVER}",
+    "dish_washer": f"dish_washer@{XMPP_SERVER}",
     "battery": f"battery@{XMPP_SERVER}",
 }
 

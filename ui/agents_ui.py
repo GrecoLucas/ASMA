@@ -100,6 +100,25 @@ class DevicesPanel:
             info["consumption"] = ttk.Label(device_frame, text="Hourly: -- kWh | Daily: -- kWh", style="Info.TLabel")
             info["consumption"].pack(anchor=tk.W, pady=2)
 
+        elif device_type == "dish_washer":
+            info["priority"] = ttk.Label(device_frame, text="Priority: --", style="Info.TLabel")
+            info["priority"].pack(anchor=tk.W, pady=2)
+
+            info["motor_status"] = ttk.Label(device_frame, text="Motor: --", style="Heading.TLabel")
+            info["motor_status"].pack(anchor=tk.W, pady=2)
+
+            info["pending_dishes"] = ttk.Label(device_frame, text="Pending Dishes: --", style="Heading.TLabel")
+            info["pending_dishes"].pack(anchor=tk.W, pady=2)
+
+            info["wash_cycles"] = ttk.Label(device_frame, text="Wash Cycles Remaining: --", style="Heading.TLabel")
+            info["wash_cycles"].pack(anchor=tk.W, pady=2)
+
+            info["power"] = ttk.Label(device_frame, text="Power: -- kW", style="Heading.TLabel")
+            info["power"].pack(anchor=tk.W, pady=2)
+
+            info["consumption"] = ttk.Label(device_frame, text="Hourly: -- kWh | Daily: -- kWh", style="Info.TLabel")
+            info["consumption"].pack(anchor=tk.W, pady=2)
+
         elif device_type == "solar_panel":
             info["priority"] = ttk.Label(device_frame, text="Priority: --", style="Info.TLabel")
             info["priority"].pack(anchor=tk.W, pady=2)
