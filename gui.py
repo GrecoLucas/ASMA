@@ -82,7 +82,7 @@ class SimulationGUI:
         self.root = root
         self.state = state
         self.root.title("ASMA - Smart Home Energy Management System")
-        self.root.geometry("900x600")
+        self.root.geometry("1500x750")
         self.root.configure(bg="#1e1e1e")
 
         # Configure styles
@@ -130,23 +130,23 @@ class SimulationGUI:
         top_frame.pack(fill=tk.X, padx=10, pady=(0, 5))
         self.create_world_panel(top_frame)
 
-        # PanedWindow for Center (Devices) and Bottom (Logs)
-        paned = tk.PanedWindow(self.root, orient=tk.VERTICAL)
+        # Main content: PanedWindow for Devices (left) and Logs (right)
+        paned = tk.PanedWindow(self.root, orient=tk.HORIZONTAL, sashwidth=5, bg="#2d2d2d")
         paned.pack(fill=tk.BOTH, expand=True, padx=10, pady=(0, 10))
 
-        # Center Frame (Devices)
-        center_frame = ttk.Frame(paned)
-        paned.add(center_frame, minsize=300)
+        # Left Frame (Devices) - Larger
+        left_frame = ttk.Frame(paned)
+        paned.add(left_frame, minsize=700, width=900)
 
-        # Bottom Frame (Logs)
-        bottom_frame = ttk.Frame(paned)
-        paned.add(bottom_frame, minsize=100)
+        # Right Frame (Logs) - Narrower
+        right_frame = ttk.Frame(paned)
+        paned.add(right_frame, minsize=300, width=500)
 
         # Devices Panel
-        self.devices_panel = DevicesPanel(center_frame)
+        self.devices_panel = DevicesPanel(left_frame)
         
         # Logs Panel
-        self.log_panel = LogPanel(bottom_frame)
+        self.log_panel = LogPanel(right_frame)
 
     def toggle_pause(self):
         self.state.toggle_pause()
@@ -224,10 +224,11 @@ class SimulationGUI:
         self.daily_consumption_label.config(text=f"{world.get('daily_consumption_total_kwh') or 0.0:.3f} kWh")
         self.cost_label.config(text=f"{world.get('daily_cost_euro') or 0.0:.3f} €", foreground="#ffb347")
         
-        # Calculate renewable percentage
+        # Calculate renewable percentage (capped at 100%)
         total_kwh = world.get('daily_consumption_total_kwh') or 0.0
         renewable_kwh = world.get('daily_renewable_kwh') or 0.0
         pct = (renewable_kwh / total_kwh * 100) if total_kwh > 0 else 0.0
+        pct = min(pct, 100.0)  # Cap at 100%
         self.renewable_label.config(text=f"{pct:.1f} %", foreground="#00ff88")
 
         # Calculate current total power consumption from all devices

@@ -207,21 +207,36 @@ class Device(Agent):
             value = value.split("@", 1)[0]
         return value
 
-    def _log_p2p(self, sender, receiver, content, event=None, tx_id=None):
+    def _log_p2p(self, sender, receiver, content, event=None, tx_id=None, **kwargs):
         if not GUI_AVAILABLE:
             return
         state = get_simulation_state()
         
-        # Format the event clearly, omitting the raw technical tx_id
+        # Format the event clearly with additional context
         tag_prefix = f"[{event}] " if event else ""
         
-        # If the content matches simple action words, simplify
+        # Enhance messages with more details
         if "REQUEST to turn ON" in content:
-            content = "Requests power to turn ON."
+            power = kwargs.get('power_kw', 0)
+            priority = kwargs.get('priority', '?')
+            total = kwargs.get('total_kw', 0)
+            content = f"Requests {power:.2f}kW (Priority {priority}, Total: {total:.2f}kW)"
+        elif "REPLY" in content:
+            # Extract decision and add more context if available
+            if "ACCEPT" in content.upper():
+                shed = " - Will shed load" if "shed_possible" in content else ""
+                content = f"Accepts request{shed}"
+            elif "REJECT" in content.upper():
+                content = "Rejects (cannot shed or exceeds limit)"
         elif "COMMIT applied, turned ON" in content:
-            content = "Consensus reached. Turning ON."
+            content = "✓ Consensus reached. Device ON."
         elif "ABORT" in content:
-            content = "Aborting requested action."
+            if "timeout" in content:
+                content = "✗ Aborted (timeout)"
+            elif "rejection" in content:
+                content = "✗ Aborted (peer rejected)"
+            else:
+                content = "✗ Aborted"
             
         state.add_message(
             self._normalize_agent_name(sender),
@@ -266,7 +281,13 @@ class Device(Agent):
                 }
             )
             await behaviour.send(peer_msg)
-            self._log_p2p(requester, peer_jid, "REQUEST to turn ON", event="REQUEST", tx_id=tx_id)
+            self._log_p2p(
+                requester, peer_jid, "REQUEST to turn ON", 
+                event="REQUEST", tx_id=tx_id,
+                power_kw=self.active_power_kw,
+                priority=self.current_priority,
+                total_kw=estimated_total
+            )
 
 
     async def _register_power_reply(self, data, msg_sender, behaviour):
