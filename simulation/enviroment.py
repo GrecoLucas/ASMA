@@ -26,7 +26,7 @@ class WorldAgent(Agent):
         self.total_daily_consumption_kwh = 0.0
         self.last_hour_consumption_kwh = 0.0
         self.total_daily_cost_euro = 0.0
-        self.total_renewable_kwh = 0.0
+        self.total_daily_renewable_kwh = 0.0
         self.last_world_state = {}
 
         # Base parameters for different seasons
@@ -47,8 +47,10 @@ class WorldAgent(Agent):
         self.hourly_consumption_by_slot = {}
         self.total_daily_consumption_kwh = 0.0
         self.total_daily_cost_euro = 0.0
-        self.total_renewable_kwh = 0.0
+        self.total_daily_renewable_kwh = 0.0
         self.last_hour_consumption_kwh = 0.0
+        if hasattr(self, '_renewable_per_slot'):
+            self._renewable_per_slot.clear()
 
     def register_device_consumption(self, device_name, day, hour, minute, consumption_kwh):
         """Register step consumption from a device, de-duplicated by (day, hour, minute, device)."""
@@ -66,11 +68,54 @@ class WorldAgent(Agent):
             self.device_daily_consumption_kwh.get(device_name, 0.0) + consumption_kwh
         )
         self.total_daily_consumption_kwh += consumption_kwh
-        # Track renewable specifically (solar panel inherently sends negative consumption)
-        if device_name == "solar" and consumption_kwh < 0:
-            self.total_renewable_kwh += abs(consumption_kwh)
 
         self.last_hour_consumption_kwh = round(sum(slot_data.values()), 3)
+        
+        # Calculate renewable energy used after all devices in this slot are registered
+        self._calculate_renewable_usage_for_slot(slot_key)
+
+    def _calculate_renewable_usage_for_slot(self, slot_key):
+        """
+        Calculate how much renewable energy was actually used by devices in this time slot.
+        Renewable energy = solar production (negative consumption) + battery discharge (negative consumption)
+        Devices usage = all positive consumption values from actual devices
+        Renewable used = min(total positive consumption, total renewable available)
+        
+        Note: This is called each time a device registers. We update the total by 
+        removing the old value for this slot and adding the new calculated value.
+        """
+        slot_data = self.hourly_consumption_by_slot.get(slot_key, {})
+        if not slot_data:
+            return
+        
+        # Separate renewable sources from consuming devices
+        renewable_available = 0.0
+        devices_consumption = 0.0
+        
+        for device_name, consumption_kwh in slot_data.items():
+            if consumption_kwh < 0:
+                # Negative = energy production (solar or battery discharge)
+                renewable_available += abs(consumption_kwh)
+            elif device_name not in ["solar", "battery"]:
+                # Positive = energy consumption by actual devices (exclude battery charging)
+                devices_consumption += consumption_kwh
+        
+        # Renewable energy used is the minimum of what's available and what's consumed
+        renewable_used_this_slot = min(renewable_available, devices_consumption)
+        
+        # Track previous value for this slot so we can update (not double-count)
+        if not hasattr(self, '_renewable_per_slot'):
+            self._renewable_per_slot = {}
+        
+        # Get previous value for this slot (0 if not yet calculated)
+        previous_value = self._renewable_per_slot.get(slot_key, 0.0)
+        
+        # Update total: remove old value, add new value
+        self.total_daily_renewable_kwh -= previous_value
+        self.total_daily_renewable_kwh += renewable_used_this_slot
+        
+        # Store new value for this slot
+        self._renewable_per_slot[slot_key] = renewable_used_this_slot
 
     def generate_temperature(self, hour):
         """Generate realistic temperature variations with smooth transitions."""
@@ -151,7 +196,7 @@ class WorldAgent(Agent):
             "hourly_consumption_total_kwh": round(self.last_hour_consumption_kwh, 3),
             "daily_consumption_total_kwh": round(self.total_daily_consumption_kwh, 3),
             "daily_cost_euro": round(self.total_daily_cost_euro, 3),
-            "daily_renewable_kwh": round(self.total_renewable_kwh, 3),
+            "daily_renewable_kwh": round(self.total_daily_renewable_kwh, 3),
             "device_daily_consumption_kwh": {
                 device: round(total, 3)
                 for device, total in self.device_daily_consumption_kwh.items()
@@ -202,7 +247,7 @@ class WorldAgent(Agent):
                             merged_state["hourly_consumption_total_kwh"] = round(self.agent.last_hour_consumption_kwh, 3)
                             merged_state["daily_consumption_total_kwh"] = round(self.agent.total_daily_consumption_kwh, 3)
                             merged_state["daily_cost_euro"] = round(self.agent.total_daily_cost_euro, 3)
-                            merged_state["daily_renewable_kwh"] = round(self.agent.total_renewable_kwh, 3)
+                            merged_state["daily_renewable_kwh"] = round(self.agent.total_daily_renewable_kwh, 3)
                             merged_state["device_daily_consumption_kwh"] = {
                                 device: round(total, 3)
                                 for device, total in self.agent.device_daily_consumption_kwh.items()

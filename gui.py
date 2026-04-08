@@ -197,7 +197,7 @@ class SimulationGUI:
         self.cost_label = ttk.Label(info_frame, text="-- €", style="Value.TLabel")
         self.cost_label.grid(row=1, column=5, sticky=tk.W, padx=5, pady=2)
 
-        ttk.Label(info_frame, text="Renewable Share:", style="Heading.TLabel").grid(row=1, column=6, sticky=tk.W, padx=5, pady=2)
+        ttk.Label(info_frame, text="Daily Renewable Used:", style="Heading.TLabel").grid(row=1, column=6, sticky=tk.W, padx=5, pady=2)
         self.renewable_label = ttk.Label(info_frame, text="-- %", style="Value.TLabel")
         self.renewable_label.grid(row=1, column=7, sticky=tk.W, padx=5, pady=2)
 
@@ -224,12 +224,23 @@ class SimulationGUI:
         self.daily_consumption_label.config(text=f"{world.get('daily_consumption_total_kwh') or 0.0:.3f} kWh")
         self.cost_label.config(text=f"{world.get('daily_cost_euro') or 0.0:.3f} €", foreground="#ffb347")
         
-        # Calculate renewable percentage (capped at 100%)
-        total_kwh = world.get('daily_consumption_total_kwh') or 0.0
+        # Calculate renewable percentage - tracks renewable energy USED by devices
         renewable_kwh = world.get('daily_renewable_kwh') or 0.0
-        pct = (renewable_kwh / total_kwh * 100) if total_kwh > 0 else 0.0
-        pct = min(pct, 100.0)  # Cap at 100%
-        self.renewable_label.config(text=f"{pct:.1f} %", foreground="#00ff88")
+        
+        # Only count positive consumption from actual devices (not solar/battery)
+        device_consumption = world.get('device_daily_consumption_kwh', {})
+        positive_consumption = sum(
+            kwh for name, kwh in device_consumption.items() 
+            if kwh > 0 and name not in ["solar", "battery"]
+        )
+        
+        if positive_consumption > 0:
+            pct = (renewable_kwh / positive_consumption) * 100
+            pct = min(pct, 100.0)  # Cap at 100% for display
+        else:
+            pct = 0.0
+        
+        self.renewable_label.config(text=f"{pct:.1f}%", foreground="#00ff88")
 
         # Calculate current total power consumption from all devices
         from config import MAX_POWER_KW
