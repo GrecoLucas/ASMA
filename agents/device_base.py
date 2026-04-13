@@ -1,6 +1,7 @@
 import json
 import time
 import uuid
+from itertools import combinations
 from spade.agent import Agent
 from spade.behaviour import CyclicBehaviour, PeriodicBehaviour
 from spade.message import Message
@@ -53,6 +54,9 @@ class Rule:
 
 class Device(Agent):
     """Base class for device agents with sensors, actuators, relations, and energy accounting."""
+
+    # Track which shedders were already used in a committed negotiation per simulation slot.
+    _slot_shed_registry = {}
 
     def __init__(self, jid, password, device_type="generic", peers=None):
         super().__init__(jid, password)
@@ -198,6 +202,13 @@ class Device(Agent):
         minute = world_state.get("minute", 0)
         return f"Time: {hour:02d}:{minute:02d}"
 
+    def _push_gui_device_state(self):
+        """Push current device state to GUI immediately after out-of-cycle state changes."""
+        if not GUI_AVAILABLE:
+            return
+        state = get_simulation_state()
+        state.update_device_state(self.name, self.get_device_state_for_gui())
+
     @staticmethod
     def _normalize_agent_name(agent_id):
         value = str(agent_id or "")
@@ -222,19 +233,38 @@ class Device(Agent):
             total = kwargs.get('total_kw', 0)
             content = f"Requests {power:.2f}kW (Priority {priority}, Total: {total:.2f}kW)"
         elif "REPLY" in content:
-            # Extract decision and add more context if available
-            if "ACCEPT" in content.upper():
-                shed = " - Will shed load" if "shed_possible" in content else ""
-                content = f"Accepts request{shed}"
-            elif "REJECT" in content.upper():
-                content = "Rejects (cannot shed or exceeds limit)"
+            decision = kwargs.get("decision", "").lower()
+            reason = kwargs.get("reason", "")
+            shed_power_kw = kwargs.get("shed_power_kw", 0.0)
+            responder_priority = kwargs.get("responder_priority", "?")
+            if decision == "accept":
+                if reason == "shed_possible":
+                    content = f"Accepts [SHED {shed_power_kw:.2f}kW p{responder_priority}]"
+                else:
+                    content = "Accepts [LIMIT]"
+            elif decision == "reject":
+                if reason == "not_lower_priority":
+                    content = "Rejects [PRIORITY]"
+                elif reason == "no_shed_capacity":
+                    content = "Rejects [NO SHED CAP]"
+                else:
+                    content = "Rejects [NOT ELIGIBLE]"
         elif "COMMIT applied, turned ON" in content:
-            content = "✓ Consensus reached. Device ON."
+            selected_count = kwargs.get("selected_count", 0)
+            selected_peers = kwargs.get("selected_peers", [])
+            overflow_kw = kwargs.get("overflow_kw", 0.0)
+            if overflow_kw > 0:
+                peers_text = ", ".join(selected_peers) if selected_peers else "none"
+                content = f"✓ ON [SHED {selected_count}: {peers_text}]"
+            else:
+                content = "✓ ON [NO SHED]"
         elif "ABORT" in content:
             if "timeout" in content:
                 content = "✗ Aborted (timeout)"
-            elif "rejection" in content:
-                content = "✗ Aborted (peer rejected)"
+            elif "shedder already used this slot" in content:
+                content = "✗ Aborted (shedder already used this slot)"
+            elif "insufficient accepted shedding" in content:
+                content = "✗ Aborted (accepted shedding not enough)"
             else:
                 content = "✗ Aborted"
             
@@ -244,7 +274,7 @@ class Device(Agent):
             f"{tag_prefix}{content}",
         )
 
-    async def _start_power_negotiation(self, rule, behaviour):
+    async def _start_power_negotiation(self, rule, behaviour, world_state=None):
         from config import MAX_POWER_KW
 
         tx_id = uuid.uuid4().hex
@@ -253,6 +283,13 @@ class Device(Agent):
         power_increase = max(0.0, self.active_power_kw - current_power)
         estimated_total = self.estimate_total_power() + power_increase
         expected = {self._normalize_agent_name(peer_jid) for peer_jid in self.peers}
+        slot_key = None
+        if world_state is not None:
+            slot_key = (
+                int(world_state.get("day", 0)),
+                int(world_state.get("hour", 0)),
+                int(world_state.get("minute", 0)),
+            )
 
         self.pending_negotiations[tx_id] = {
             "created_at": time.monotonic(),
@@ -262,6 +299,7 @@ class Device(Agent):
             "replies": {},
             "estimated_total_kw": estimated_total,
             "max_power_kw": MAX_POWER_KW,
+            "slot_key": slot_key,
             "attempts": 0,
         }
 
@@ -305,9 +343,21 @@ class Device(Agent):
             "decision": decision,
             "should_shed": should_shed,
             "reason": reason,
+            "shed_power_kw": float(data.get("shed_power_kw", 0.0)),
+            "responder_priority": int(data.get("responder_priority", 3)),
         }
 
-        self._log_p2p(peer_name, self.name, f"REPLY {decision.upper()} {reason}".strip(), event="REPLY", tx_id=tx_id)
+        self._log_p2p(
+            peer_name,
+            self.name,
+            f"REPLY {decision.upper()} {reason}".strip(),
+            event="REPLY",
+            tx_id=tx_id,
+            decision=decision,
+            reason=reason,
+            shed_power_kw=float(data.get("shed_power_kw", 0.0)),
+            responder_priority=int(data.get("responder_priority", 3)),
+        )
 
         expected = negotiation["expected_replies"]
         if expected.issubset(set(negotiation["replies"].keys())):
@@ -320,11 +370,63 @@ class Device(Agent):
         if not negotiation:
             return
 
-        replies = negotiation["replies"].values()
-        has_reject = any(reply.get("decision") != "accept" for reply in replies)
-        commit = not has_reject and len(negotiation["replies"]) > 0 and not timed_out
+        requester_priority = self.current_priority if self.current_priority is not None else 3
+        overflow_kw = max(0.0, negotiation["estimated_total_kw"] - negotiation["max_power_kw"])
+
+        accepted_replies = {
+            peer_name: reply
+            for peer_name, reply in negotiation["replies"].items()
+            if reply.get("decision") == "accept"
+        }
+
+        selected_shedders = []
+        commit = False
+        blocked_shedder_conflict = False
+
+        # New policy: no unanimity required. Commit if at least one peer accepts
+        # and enough accepted low-priority shedding is available for overflow.
+        if accepted_replies:
+            if overflow_kw <= 0:
+                commit = True
+            else:
+                shedding_candidates = []
+                for peer_name, reply in accepted_replies.items():
+                    responder_priority = int(reply.get("responder_priority", 3))
+                    shed_power_kw = float(reply.get("shed_power_kw", 0.0))
+                    can_shed = bool(reply.get("should_shed", False)) and shed_power_kw > 0
+                    if can_shed and responder_priority < requester_priority:
+                        shedding_candidates.append((peer_name, responder_priority, shed_power_kw))
+
+                # Optimize for the fewest devices first; tie-break by lower priorities.
+                # Candidate tuple: (peer_name, responder_priority, shed_power_kw)
+                for k in range(1, len(shedding_candidates) + 1):
+                    feasible_sets = []
+                    for candidate_set in combinations(shedding_candidates, k):
+                        total_shed = sum(item[2] for item in candidate_set)
+                        if total_shed + 1e-9 >= overflow_kw:
+                            priorities = sorted(item[1] for item in candidate_set)
+                            feasible_sets.append((priorities, -total_shed, candidate_set))
+
+                    if feasible_sets:
+                        # Lower priority vector first; if tie, prefer greater shed margin.
+                        feasible_sets.sort(key=lambda item: (item[0], item[1]))
+                        best_set = feasible_sets[0][2]
+                        selected_shedders = [item[0] for item in best_set]
+                        commit = True
+                        break
+
+        # Simple guard against overlapping same-slot commits reusing the same shedder.
+        slot_key = negotiation.get("slot_key")
+        if commit and overflow_kw > 0 and slot_key is not None:
+            used_shedders = Device._slot_shed_registry.setdefault(slot_key, set())
+            if any(peer in used_shedders for peer in selected_shedders):
+                commit = False
+                blocked_shedder_conflict = True
+            else:
+                used_shedders.update(selected_shedders)
 
         for peer_jid in self.peers:
+            peer_name = self._normalize_agent_name(peer_jid)
             msg = Message(to=peer_jid)
             msg.set_metadata("performative", "inform")
             msg.set_metadata("ontology", "p2p")
@@ -333,6 +435,8 @@ class Device(Agent):
                     "event": "power_commit" if commit else "power_abort",
                     "transaction_id": tx_id,
                     "requester": negotiation["requester"],
+                    "shed_peers": selected_shedders if commit else [],
+                    "peer_selected_for_shed": peer_name in selected_shedders if commit else False,
                 }
             )
             await behaviour.send(msg)
@@ -340,7 +444,17 @@ class Device(Agent):
         rule = negotiation["rule"]
         if commit:
             self.actuate(rule.actuator_name, "on")
-            self._log_p2p(self.name, "all_peers", "COMMIT applied, turned ON", event="COMMIT", tx_id=tx_id)
+            self._push_gui_device_state()
+            self._log_p2p(
+                self.name,
+                "all_peers",
+                "COMMIT applied, turned ON",
+                event="COMMIT",
+                tx_id=tx_id,
+                selected_count=len(selected_shedders),
+                selected_peers=selected_shedders,
+                overflow_kw=overflow_kw,
+            )
             notify_msg = Message(to=AGENTS["world"])
             notify_msg.body = json.dumps(
                 {
@@ -353,7 +467,12 @@ class Device(Agent):
         else:
             # Release the ON rule so it can reattempt if condition remains true.
             rule.last_triggered = False
-            reason = "timeout" if timed_out else "peer rejection"
+            if timed_out:
+                reason = "timeout"
+            elif blocked_shedder_conflict:
+                reason = "shedder already used this slot"
+            else:
+                reason = "insufficient accepted shedding"
             self._log_p2p(self.name, "all_peers", f"ABORT due to {reason}", event="ABORT", tx_id=tx_id)
 
         self.pending_negotiations.pop(tx_id, None)
@@ -368,6 +487,8 @@ class Device(Agent):
                 rule.last_triggered = True
             elif rule.command == "on":
                 rule.last_triggered = False
+
+        self._push_gui_device_state()
 
         notify_msg = Message(to=AGENTS["world"])
         notify_msg.body = json.dumps(
@@ -443,7 +564,7 @@ class Device(Agent):
 
                             # Se ligar, envia Broadcast de Intenção aos Peers (Negociação)
                             if rule.command == "on" and self.agent.peers:
-                                await self.agent._start_power_negotiation(rule, self)
+                                await self.agent._start_power_negotiation(rule, self, world_state)
                                 continue
 
                             notify_msg = Message(to=AGENTS["world"])
@@ -496,14 +617,24 @@ class Device(Agent):
                         # Calculate my current priority
                         my_priority = self.agent.current_priority if self.agent.current_priority is not None else 3
                         current_power_kw = self.agent.get_power_consumption_kw()
+                        shed_power_kw = max(0.0, current_power_kw - self.agent.idle_power_kw)
 
                         should_shed = (
                             projected_total_kw > max_power_kw
-                            and current_power_kw > self.agent.idle_power_kw
+                            and shed_power_kw > 0
                             and my_priority < req_priority
                         )
                         decision = "accept" if (projected_total_kw <= max_power_kw or should_shed) else "reject"
-                        reason = "shed_possible" if should_shed else ("within_limit" if projected_total_kw <= max_power_kw else "cannot_shed")
+                        if should_shed:
+                            reason = "shed_possible"
+                        elif projected_total_kw <= max_power_kw:
+                            reason = "within_limit"
+                        elif shed_power_kw <= 0:
+                            reason = "no_shed_capacity"
+                        elif my_priority >= req_priority:
+                            reason = "not_lower_priority"
+                        else:
+                            reason = "cannot_shed"
 
                         self.agent.incoming_request_decisions[tx_id] = {
                             "accept": decision == "accept",
@@ -521,6 +652,8 @@ class Device(Agent):
                                 "decision": decision,
                                 "should_shed": should_shed,
                                 "reason": reason,
+                                "shed_power_kw": round(shed_power_kw, 3),
+                                "responder_priority": my_priority,
                                 "responder": self.agent._normalize_agent_name(self.agent.name),
                             }
                         )
@@ -531,8 +664,10 @@ class Device(Agent):
 
                     elif data.get("event") == "power_commit":
                         tx_id = data.get("transaction_id")
+                        shed_peers = data.get("shed_peers", [])
+                        my_name = self.agent._normalize_agent_name(self.agent.name)
                         decision = self.agent.incoming_request_decisions.pop(tx_id, None)
-                        if decision and decision.get("accept") and decision.get("should_shed"):
+                        if decision and decision.get("accept") and my_name in shed_peers:
                             await self.agent._apply_shedding(decision.get("requester", "unknown"), tx_id, self)
                         self.agent._log_p2p(
                             data.get("requester", "unknown"),

@@ -48,7 +48,7 @@ class AirConditioner(Device):
 
         # Typical split AC consumption profile
         self.active_power_kw = 1.35
-        self.idle_power_kw = 0.08
+        self.idle_power_kw = 0.0
 
         self.add_rule(
             Rule(

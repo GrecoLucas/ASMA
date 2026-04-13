@@ -227,11 +227,11 @@ class SimulationGUI:
         # Calculate renewable percentage - tracks renewable energy USED by devices
         renewable_kwh = world.get('daily_renewable_kwh') or 0.0
         
-        # Only count positive consumption from actual devices (not solar/battery)
+        # Only count positive consumption from actual devices (not solar generation)
         device_consumption = world.get('device_daily_consumption_kwh', {})
         positive_consumption = sum(
             kwh for name, kwh in device_consumption.items() 
-            if kwh > 0 and name not in ["solar", "battery"]
+            if kwh > 0 and name != "solar"
         )
         
         if positive_consumption > 0:

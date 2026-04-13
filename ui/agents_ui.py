@@ -119,22 +119,6 @@ class DevicesPanel:
             info["consumption"] = ttk.Label(device_frame, text="Hourly: -- kWh | Daily: -- kWh", style="Info.TLabel")
             info["consumption"].pack(anchor=tk.W, pady=2)
 
-        elif device_type == "battery":
-            info["priority"] = ttk.Label(device_frame, text="Priority: --", style="Info.TLabel")
-            info["priority"].pack(anchor=tk.W, pady=2)
-
-            info["status"] = ttk.Label(device_frame, text="Status: --", style="Heading.TLabel")
-            info["status"].pack(anchor=tk.W, pady=2)
-
-            info["charge"] = ttk.Label(device_frame, text="Charge: -- / -- kWh (--%)", style="Heading.TLabel")
-            info["charge"].pack(anchor=tk.W, pady=2)
-
-            info["power"] = ttk.Label(device_frame, text="Power Flow: -- kW", style="Heading.TLabel")
-            info["power"].pack(anchor=tk.W, pady=2)
-
-            info["consumption"] = ttk.Label(device_frame, text="Hourly: -- kWh | Daily: -- kWh", style="Info.TLabel")
-            info["consumption"].pack(anchor=tk.W, pady=2)
-
         self.device_frames[device_name] = {
             "frame": device_frame,
             "labels": info,
@@ -264,37 +248,4 @@ class DevicesPanel:
                 device_info["labels"]["consumption"].config(
                     text=f"Hourly: {hourly_consumption_kwh:.3f} kWh | Daily: {daily_consumption_kwh:.3f} kWh"
                 )
-
-            elif device_info["type"] == "battery":
-                status = device_state.get("status", "IDLE")
-                power_kw = device_state.get("power_kw", 0.0)
-                battery_flow = device_state.get("battery_flow_kw", power_kw)
-                charge = device_state.get("charge_kwh", 0.0)
-                capacity = device_state.get("capacity_kwh", 0.0)
-                pct = device_state.get("charge_percent", 0.0)
-                hourly_consumption_kwh = device_state.get("hourly_consumption_kwh", 0.0)
-                daily_consumption_kwh = device_state.get("daily_consumption_kwh", 0.0)
-                
-                device_info["labels"]["priority"].config(text="Priority: 5")
-                
-                if "CHARGING & DISCHARGING" in status: status_color = "#00ff88"
-                elif status == "CHARGING": status_color = "#00ff88"
-                elif status == "DISCHARGING": status_color = "#ffb347"
-                else: status_color = "#00d4ff" if status == "FULL" else "#b0b0b0"
-                
-                device_info["labels"]["status"].config(text=f"Status: {status}", foreground=status_color)
-                
-                flow = "IDLE"
-                if "CHARGING & DISCHARGING" in status:
-                    # In this state, battery_flow > 0 means net charge, < 0 means net discharge
-                    if battery_flow > 0.01: flow = f"NET CHARGE at {battery_flow:.2f} kW"
-                    elif battery_flow < -0.01: flow = f"NET DISCHARGE at {abs(battery_flow):.2f} kW"
-                    else: flow = "NET ZERO (Equal Chg/Dis)"
-                elif battery_flow > 0.01: flow = f"CHARGING at {battery_flow:.2f} kW"
-                elif battery_flow < -0.01: flow = f"DISCHARGING at {abs(battery_flow):.2f} kW"
-                
-                device_info["labels"]["power"].config(text=f"Battery Flow: {flow}")
-                
-                device_info["labels"]["charge"].config(text=f"Charge: {charge:.2f} / {capacity:.2f} kWh ({pct:.0f}%)")
-                device_info["labels"]["consumption"].config(text=f"Hourly: {hourly_consumption_kwh:.3f} kWh | Daily: {daily_consumption_kwh:.3f} kWh")
 

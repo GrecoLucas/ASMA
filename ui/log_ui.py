@@ -26,9 +26,13 @@ class LogPanel:
         self.log_text.tag_configure("receiver", foreground="#8a8aff", font=("Consolas", 9))
         self.log_text.tag_configure("request", foreground="#ffd94a", font=("Consolas", 9))
         self.log_text.tag_configure("accept", foreground="#33ff88", font=("Consolas", 9, "bold"))
+        self.log_text.tag_configure("accept_limit", foreground="#33ff88", font=("Consolas", 9, "bold"))
+        self.log_text.tag_configure("accept_shed", foreground="#ffcc66", font=("Consolas", 9, "bold"))
         self.log_text.tag_configure("reject", foreground="#ff4d4d", font=("Consolas", 9, "bold"))
         self.log_text.tag_configure("info", foreground="#b0f7ff", font=("Consolas", 9))
         self.log_text.tag_configure("consensus", foreground="#00ff88", font=("Consolas", 9, "bold"))
+        self.log_text.tag_configure("commit_no_shed", foreground="#00ff88", font=("Consolas", 9, "bold"))
+        self.log_text.tag_configure("commit_with_shed", foreground="#66d9ff", font=("Consolas", 9, "bold"))
         self.log_text.tag_configure("abort", foreground="#ff6666", font=("Consolas", 9, "bold"))
         self.log_text.tag_configure("details", foreground="#9d9dff", font=("Consolas", 8, "italic"))
         self.log_text.tag_configure("separator", foreground="#444444")
@@ -69,10 +73,18 @@ class LogPanel:
                         
                         # Determine content tag based on message type
                         content_upper = content.upper()
-                        if "✓" in content or "CONSENSUS REACHED" in content_upper:
+                        if "✓ ON [NO SHED]" in content_upper:
+                            parts.append((content, "commit_no_shed"))
+                        elif "✓ ON [SHED" in content_upper:
+                            parts.append((content, "commit_with_shed"))
+                        elif "✓" in content or "CONSENSUS REACHED" in content_upper:
                             parts.append((content, "consensus"))
                         elif "✗" in content or "ABORT" in content_upper:
                             parts.append((content, "abort"))
+                        elif "ACCEPTS [LIMIT]" in content_upper:
+                            parts.append((content, "accept_limit"))
+                        elif "ACCEPTS [SHED" in content_upper:
+                            parts.append((content, "accept_shed"))
                         elif "ACCEPTS" in content_upper:
                             parts.append((content, "accept"))
                         elif "REJECTS" in content_upper:

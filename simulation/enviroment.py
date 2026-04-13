@@ -77,7 +77,7 @@ class WorldAgent(Agent):
     def _calculate_renewable_usage_for_slot(self, slot_key):
         """
         Calculate how much renewable energy was actually used by devices in this time slot.
-        Renewable energy = solar production (negative consumption) + battery discharge (negative consumption)
+        Renewable energy = solar production (negative consumption)
         Devices usage = all positive consumption values from actual devices
         Renewable used = min(total positive consumption, total renewable available)
         
@@ -94,10 +94,10 @@ class WorldAgent(Agent):
         
         for device_name, consumption_kwh in slot_data.items():
             if consumption_kwh < 0:
-                # Negative = energy production (solar or battery discharge)
+                # Negative = energy production
                 renewable_available += abs(consumption_kwh)
-            elif device_name not in ["solar", "battery"]:
-                # Positive = energy consumption by actual devices (exclude battery charging)
+            elif device_name != "solar":
+                # Positive = energy consumption by actual devices
                 devices_consumption += consumption_kwh
         
         # Renewable energy used is the minimum of what's available and what's consumed

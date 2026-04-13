@@ -48,7 +48,7 @@ class Refrigerator(Device):
 
         # Typical compressor profile
         self.active_power_kw = 0.18
-        self.idle_power_kw = 0.03
+        self.idle_power_kw = 0.0
 
         self.add_rule(
             Rule(

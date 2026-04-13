@@ -52,7 +52,7 @@ class WashingMachine(Device):
 
         # Power profile according to rules: active 0.5 kW, idle 0.05 kW
         self.active_power_kw = 0.5
-        self.idle_power_kw = 0.05
+        self.idle_power_kw = 0.0
 
         self.add_rule(
             Rule(
