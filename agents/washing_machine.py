@@ -46,6 +46,8 @@ class WashingMachine(Device):
         self.clothes_per_cycle = 10  # How many clothes are washed per cycle
         self.accumulation_rate = 2  # Clothes accumulated per time step when idle
         self.steps_waiting = 0  # How many steps clothes have been waiting (>= threshold)
+        self.price_sensitivity = 2  # High: very deferrable device
+        self.current_energy_price = 0.12  # Updated each tick from world state
 
         self.add_sensor("laundry", LaundrySensorComponent())
         self.add_actuator("motor", WashingMotorComponent())
@@ -78,6 +80,7 @@ class WashingMachine(Device):
 
     def update_sensors(self, world_state):
         self.current_hour = world_state.get("hour")
+        self.current_energy_price = world_state.get("energy_price", 0.12)
         motor = self.actuators["motor"]
 
         if motor.is_running:
@@ -100,9 +103,10 @@ class WashingMachine(Device):
         else:
             # Machine idle - clothes accumulate over time
             self.pending_clothes += self.accumulation_rate
-            # Reset cycle counter when idle
-            self.cycle_steps_remaining = 0
-            
+            # Only reset cycle if not recovering from shed
+            if self.shed_timeout <= 0:
+                 self.cycle_steps_remaining = 0
+                 
             # Track waiting time when above threshold
             if self.pending_clothes >= self.clothes_threshold:
                 self.steps_waiting += 1
@@ -135,8 +139,11 @@ class WashingMachine(Device):
         # Add priority based on waiting time (1 priority per 3 hours/steps)
         waiting_bonus = self.steps_waiting // 3
         
-        # Cap at priority 5
-        return min(5, base_priority + waiting_bonus)
+        raw_priority = base_priority + waiting_bonus
+        # Apply price modifier: boost in cheap hours, penalize in expensive hours
+        price_modifier = self._calculate_price_modifier()
+        # Cap at priority 5, floor at 0
+        return max(0, min(5, raw_priority + price_modifier))
 
     def get_power_consumption_kw(self):
         motor = self.actuators["motor"]

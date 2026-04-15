@@ -69,6 +69,12 @@ class WorldAgent(Agent):
         )
         self.total_daily_consumption_kwh += consumption_kwh
 
+        # Calculate cost using the world state price for this time slot
+        if consumption_kwh > 0 and self.last_world_state:
+            price = self.last_world_state.get("energy_price", 0.12)
+            self.total_daily_cost_euro += consumption_kwh * price
+
+
         self.last_hour_consumption_kwh = round(sum(slot_data.values()), 3)
         
         # Calculate renewable energy used after all devices in this slot are registered
@@ -270,20 +276,6 @@ class WorldAgent(Agent):
 
             # Update state with modified temperature after device effects
             state["temperature"] = round(self.agent.current_temperature, 1)
-
-            # Calculate cost for the current step based on net house consumption
-            price = state["energy_price"]
-            net_power = 0.0
-            if GUI_AVAILABLE:
-                gui_state = get_simulation_state()
-                devs = gui_state.get_all_devices()
-                for d in devs:
-                    d_state = gui_state.get_device_state(d)
-                    net_power += d_state.get("power_kw", 0.0)
-            
-            if net_power > 0:
-                step_consumption = net_power * (MINUTES_PER_STEP / 60.0)
-                self.agent.total_daily_cost_euro += step_consumption * price
 
             self.agent.last_world_state = state.copy()
 

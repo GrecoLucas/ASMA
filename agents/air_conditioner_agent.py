@@ -42,6 +42,8 @@ class AirConditioner(Device):
         self.temp_margin = temp_margin
         self.current_temp = None
         self.current_hour = None
+        self.price_sensitivity = 1  # Low: comfort matters but can defer slightly
+        self.current_energy_price = 0.12  # Updated each tick from world state
 
         self.add_sensor("temperature", TemperatureSensorComponent())
         self.add_actuator("ac_switch", ACActuatorComponent())
@@ -75,6 +77,7 @@ class AirConditioner(Device):
     def update_sensors(self, world_state):
         temperature = world_state.get("temperature")
         self.current_hour = world_state.get("hour")
+        self.current_energy_price = world_state.get("energy_price", 0.12)
         self.current_temp = temperature
 
         if temperature is not None:
@@ -100,23 +103,27 @@ class AirConditioner(Device):
 
         # Extreme discomfort - health/safety concern
         if temp_deviation >= 8:
-            return 5
+            raw_priority = 5
 
         # High discomfort - very uncomfortable
         elif temp_deviation >= 6:
-            return 4
+            raw_priority = 4
 
         # Moderate discomfort - uncomfortable
         elif temp_deviation >= 4:
-            return 3
+            raw_priority = 3
 
         # Slight discomfort - noticeable but tolerable
         elif temp_deviation >= 2:
-            return 2
+            raw_priority = 2
 
         # Comfortable - within acceptable range
         else:
-            return 1
+            raw_priority = 1
+
+        # Apply price modifier: slight adjustment based on energy cost
+        price_modifier = self._calculate_price_modifier()
+        return max(0, min(5, raw_priority + price_modifier))
 
     def get_power_consumption_kw(self):
         ac_actuator = self.actuators["ac_switch"]

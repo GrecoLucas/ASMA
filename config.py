@@ -23,3 +23,7 @@ MINUTES_PER_STEP = 60
 NEGOTIATION_TIMEOUT_SEC = 5
 NEGOTIATION_RETRY_LIMIT = 1
 NEGOTIATION_LOOP_PERIOD_SEC = 1
+
+# Price-aware priority settings
+PRICE_MIN = 0.07   # Minimum expected electricity price (€/kWh)
+PRICE_MAX = 0.27   # Maximum expected electricity price (€/kWh)

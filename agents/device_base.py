@@ -13,6 +13,10 @@ try:
 except ImportError:
     GUI_AVAILABLE = False
 
+# Price normalization constants for priority modifier
+PRICE_MIN = 0.07
+PRICE_MAX = 0.27
+
 
 class Rule:
     """A rule that evaluates a sensor condition and triggers an actuator action."""
@@ -25,6 +29,7 @@ class Rule:
         self.actuator_name = actuator_name
         self.command = command
         self.last_triggered = False
+        self.negotiation_failures = 0
 
     def evaluate(self, sensor_value):
         """Check if the sensor value satisfies the condition."""
@@ -57,6 +62,16 @@ class Device(Agent):
 
     # Track which shedders were already used in a committed negotiation per simulation slot.
     _slot_shed_registry = {}
+    # Track pending power reservations from agents currently negotiating (race condition prevention)
+    _pending_power_reservations = {}
+
+    @classmethod
+    def _purge_old_slots(cls, current_day):
+        """Remove slot entries from previous days to prevent memory leak."""
+        cls._slot_shed_registry = {
+            k: v for k, v in cls._slot_shed_registry.items()
+            if k[0] >= current_day
+        }
 
     def __init__(self, jid, password, device_type="generic", peers=None):
         super().__init__(jid, password)
@@ -109,7 +124,8 @@ class Device(Agent):
         return 3  # Default medium priority
 
     def estimate_total_power(self):
-        """Estimate current total power consumption from P2P data and own consumption.
+        """Estimate current total power consumption from P2P data, own consumption,
+        and pending power reservations from other agents currently negotiating.
 
         Returns:
             float: Estimated total power in kW
@@ -119,7 +135,27 @@ class Device(Agent):
             data["power_kw"]
             for data in self.peer_power_status.values()
         )
-        return my_power + peer_power
+        # Include pending reservations from other agents to prevent race conditions
+        my_name = self._normalize_agent_name(self.name)
+        reservation_power = sum(
+            pw for name, pw in Device._pending_power_reservations.items()
+            if name != my_name
+        )
+        return my_power + peer_power + reservation_power
+
+    def _calculate_price_modifier(self):
+        """Calculate priority modifier based on current energy price.
+
+        Returns a value that increases priority in cheap hours and decreases
+        in expensive hours. Devices with price_sensitivity=0 are unaffected.
+        """
+        sensitivity = getattr(self, 'price_sensitivity', 0)
+        if sensitivity == 0:
+            return 0
+        price = getattr(self, 'current_energy_price', 0.12)
+        normalized = (price - PRICE_MIN) / (PRICE_MAX - PRICE_MIN)
+        normalized = max(0.0, min(1.0, normalized))
+        return round(sensitivity * (1.0 - 2.0 * normalized))
 
     def evaluate_rules(self, sensor_name, sensor_value):
         """Evaluate all rules for a given sensor and execute matching actuator commands."""
@@ -184,6 +220,7 @@ class Device(Agent):
         if day != self.current_day:
             self.current_day = day
             self.daily_consumption_kwh = 0.0
+            Device._purge_old_slots(day)
 
         self.hourly_consumption_kwh = self.get_hourly_consumption_kwh(world_state)
         self.daily_consumption_kwh += self.hourly_consumption_kwh
@@ -279,6 +316,8 @@ class Device(Agent):
 
         tx_id = uuid.uuid4().hex
         requester = self._normalize_agent_name(self.name)
+        # Register power reservation so concurrent negotiations see it
+        Device._pending_power_reservations[requester] = self.active_power_kw
         current_power = self.get_power_consumption_kw()
         power_increase = max(0.0, self.active_power_kw - current_power)
         estimated_total = self.estimate_total_power() + power_increase
@@ -443,6 +482,7 @@ class Device(Agent):
 
         rule = negotiation["rule"]
         if commit:
+            rule.negotiation_failures = 0
             self.actuate(rule.actuator_name, "on")
             self._push_gui_device_state()
             self._log_p2p(
@@ -467,6 +507,11 @@ class Device(Agent):
         else:
             # Release the ON rule so it can reattempt if condition remains true.
             rule.last_triggered = False
+            rule.negotiation_failures += 1
+            # Exponential backoff: apply shed_timeout to slow down retries
+            from config import NEGOTIATION_RETRY_LIMIT
+            if rule.negotiation_failures > NEGOTIATION_RETRY_LIMIT:
+                self.shed_timeout = max(self.shed_timeout, min(2 ** rule.negotiation_failures, 10))
             if timed_out:
                 reason = "timeout"
             elif blocked_shedder_conflict:
@@ -475,18 +520,27 @@ class Device(Agent):
                 reason = "insufficient accepted shedding"
             self._log_p2p(self.name, "all_peers", f"ABORT due to {reason}", event="ABORT", tx_id=tx_id)
 
+        # Clear reservation regardless of commit/abort
+        requester = negotiation.get("requester", "")
+        Device._pending_power_reservations.pop(requester, None)
         self.pending_negotiations.pop(tx_id, None)
 
     async def _apply_shedding(self, requester_name, tx_id, behaviour):
         from config import AGENTS
 
         self.shed_timeout = 3
+        # Find the primary actuator (from the first "on" rule) and shed only that
+        primary_actuator = None
         for rule in self.rules:
-            if rule.command == "off":
+            if rule.command == "on":
+                primary_actuator = rule.actuator_name
+                rule.last_triggered = False
+                break
+        for rule in self.rules:
+            if rule.command == "off" and (primary_actuator is None or rule.actuator_name == primary_actuator):
                 self.actuate(rule.actuator_name, rule.command)
                 rule.last_triggered = True
-            elif rule.command == "on":
-                rule.last_triggered = False
+                break
 
         self._push_gui_device_state()
 
@@ -667,8 +721,17 @@ class Device(Agent):
                         shed_peers = data.get("shed_peers", [])
                         my_name = self.agent._normalize_agent_name(self.agent.name)
                         decision = self.agent.incoming_request_decisions.pop(tx_id, None)
-                        if decision and decision.get("accept") and my_name in shed_peers:
+                        actual_shed_power = max(0.0, self.agent.get_power_consumption_kw() - self.agent.idle_power_kw)
+                        if decision and decision.get("accept") and my_name in shed_peers and actual_shed_power > 0:
                             await self.agent._apply_shedding(decision.get("requester", "unknown"), tx_id, self)
+                        elif decision and my_name in shed_peers and actual_shed_power <= 0:
+                            self.agent._log_p2p(
+                                self.agent.name,
+                                data.get("requester", "unknown"),
+                                "SHED skipped (already off)",
+                                event="SHED_SKIP",
+                                tx_id=tx_id,
+                            )
                         self.agent._log_p2p(
                             data.get("requester", "unknown"),
                             self.agent.name,
@@ -712,6 +775,11 @@ class Device(Agent):
                 
         from spade.template import Template
         from config import AGENTS
+
+        # Initialize peer power status with idle defaults to avoid underestimation
+        for peer_jid in self.peers:
+            peer_name = self._normalize_agent_name(peer_jid)
+            self.peer_power_status[peer_name] = {"power_kw": 0.0, "timestamp": 0}
         
         # Filtro para mensagens do Mundo
         world_template = Template()
