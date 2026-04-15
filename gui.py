@@ -26,7 +26,7 @@ class SimulationState:
     def toggle_pause(self):
         with self.lock:
             self.is_paused = not self.is_paused
-
+            return self.is_paused  
     def update_world_state(self, state):
         with self.lock:
             self.world_state = state.copy()
@@ -149,8 +149,8 @@ class SimulationGUI:
         self.log_panel = LogPanel(right_frame)
 
     def toggle_pause(self):
-        self.state.toggle_pause()
-        if self.state.is_paused:
+        now_paused = self.state.toggle_pause()
+        if now_paused:
             self.pause_btn.config(text="▶ Play")
         else:
             self.pause_btn.config(text="⏸ Pause")

@@ -79,7 +79,11 @@ class Refrigerator(Device):
         if ambient_temp is not None:
             compressor = self.actuators["compressor"]
             if compressor.is_running:
-                self.current_temp = self.target_temp + (ambient_temp - 20) * 0.1
+                cooled_target = self.target_temp + (ambient_temp - 20) * 0.1
+                if self.current_temp is None:
+                    self.current_temp = cooled_target
+                else:
+                    self.current_temp += (cooled_target - self.current_temp) * 0.15
             else:
                 if self.current_temp is None:
                     self.current_temp = self.target_temp

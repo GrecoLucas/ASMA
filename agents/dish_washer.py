@@ -42,17 +42,17 @@ class DishWasher(Device):
         self.pending_dishes = 0
         self.current_hour = None
         self.cycle_steps_remaining = 0  # Steps remaining in current wash cycle
-        self.cycle_duration_steps = 2  # 2 hours = 2 steps (with MINUTES_PER_STEP=60)
-        self.dishes_per_cycle = 20  # How many dishes are washed per cycle
-        self.accumulation_rate = 2  # Dishes accumulated per time step when idle
-        self.steps_waiting = 0  # How many steps dishes have been waiting (>= threshold)
-        self.price_sensitivity = 2  # High: very deferrable device
+        self.cycle_duration_steps = 2   # 2 hours = 2 steps (with MINUTES_PER_STEP=60)
+        self.dishes_per_cycle = 20      # How many dishes are washed per cycle
+        self.accumulation_rate = 2      # Dishes accumulated per time step when truly idle
+        self.steps_waiting = 0          # How many steps dishes have been waiting (>= threshold)
+        self.price_sensitivity = 2      # High: very deferrable device
         self.current_energy_price = 0.12  # Updated each tick from world state
 
         self.add_sensor("dishes", DishSensorComponent())
         self.add_actuator("motor", DishWashingMotorComponent())
 
-        # Power profile according to rules: active 0.5 kW, idle 0.05 kW
+        # Power profile: active 0.5 kW, idle 0.0 kW
         self.active_power_kw = 0.5
         self.idle_power_kw = 0.0
 
@@ -86,12 +86,12 @@ class DishWasher(Device):
         if motor.is_running:
             # Washing in progress - reset waiting time
             self.steps_waiting = 0
-            
+
             if self.cycle_steps_remaining == 0:
-                # Motor just turned on, start a new 2-hour cycle
+                # Motor just turned on (or resumed after shed), start a new wash cycle
                 self.cycle_steps_remaining = self.cycle_duration_steps
             else:
-                # Continue cycle
+                # Continue existing cycle
                 self.cycle_steps_remaining -= 1
                 # If cycle just completed, wash the dishes
                 if self.cycle_steps_remaining == 0:
@@ -101,12 +101,14 @@ class DishWasher(Device):
                     if self.pending_dishes >= self.dishes_threshold:
                         self.cycle_steps_remaining = self.cycle_duration_steps
         else:
-            # Machine idle - dishes accumulate over time
-            self.pending_dishes += self.accumulation_rate
-            # Only reset cycle if not recovering from shed
+            # Machine is idle (or forcibly shed).
+
+            if self.shed_timeout <= 0:
+                self.pending_dishes += self.accumulation_rate
+
             if self.shed_timeout <= 0:
                 self.cycle_steps_remaining = 0
-            
+
             # Track waiting time when above threshold
             if self.pending_dishes >= self.dishes_threshold:
                 self.steps_waiting += 1
@@ -119,15 +121,15 @@ class DishWasher(Device):
         Priority scale (0=lowest, 5=highest):
         - Base priority from dish count
         - Increases with waiting time (steps since reaching threshold)
-        
-        Formula: Base priority increases by 1 for every 3 hours (3 steps) of waiting
-        
+
+        Formula: Base priority increases by 1 for every 3 steps of waiting.
+
         Returns:
             int: Priority value 0-5
         """
         if self.pending_dishes < self.dishes_threshold:
             return 0  # Not enough dishes, no priority
-        
+
         # Base priority from dish count
         if self.pending_dishes >= 25:
             base_priority = 3
@@ -135,10 +137,10 @@ class DishWasher(Device):
             base_priority = 2
         else:  # 10-19 dishes
             base_priority = 1
-        
-        # Add priority based on waiting time (1 priority per 3 hours/steps)
+
+        # Add priority based on waiting time (1 priority per 3 steps)
         waiting_bonus = self.steps_waiting // 3
-        
+
         raw_priority = base_priority + waiting_bonus
         # Apply price modifier: boost in cheap hours, penalize in expensive hours
         price_modifier = self._calculate_price_modifier()
@@ -156,7 +158,7 @@ class DishWasher(Device):
     def get_device_state_for_gui(self):
         motor = self.actuators["motor"]
         return {
-            "device_type": "washing_machine",
+            "device_type": "dish_washer", 
             "priority": self.current_priority if self.current_priority is not None else 0,
             "motor_status": motor.get_state(),
             "pending_dishes": self.pending_dishes,

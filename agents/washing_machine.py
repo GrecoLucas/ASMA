@@ -42,17 +42,17 @@ class WashingMachine(Device):
         self.pending_clothes = 0
         self.current_hour = None
         self.cycle_steps_remaining = 0  # Steps remaining in current wash cycle
-        self.cycle_duration_steps = 2  # 2 hours = 2 steps (with MINUTES_PER_STEP=60)
-        self.clothes_per_cycle = 10  # How many clothes are washed per cycle
-        self.accumulation_rate = 2  # Clothes accumulated per time step when idle
-        self.steps_waiting = 0  # How many steps clothes have been waiting (>= threshold)
-        self.price_sensitivity = 2  # High: very deferrable device
+        self.cycle_duration_steps = 2   # 2 hours = 2 steps (with MINUTES_PER_STEP=60)
+        self.clothes_per_cycle = 10     # How many clothes are washed per cycle
+        self.accumulation_rate = 2      # Clothes accumulated per time step when truly idle
+        self.steps_waiting = 0          # How many steps clothes have been waiting (>= threshold)
+        self.price_sensitivity = 2      # High: very deferrable device
         self.current_energy_price = 0.12  # Updated each tick from world state
 
         self.add_sensor("laundry", LaundrySensorComponent())
         self.add_actuator("motor", WashingMotorComponent())
 
-        # Power profile according to rules: active 0.5 kW, idle 0.05 kW
+        # Power profile: active 0.5 kW, idle 0.0 kW
         self.active_power_kw = 0.5
         self.idle_power_kw = 0.0
 
@@ -86,12 +86,12 @@ class WashingMachine(Device):
         if motor.is_running:
             # Washing in progress - reset waiting time
             self.steps_waiting = 0
-            
+
             if self.cycle_steps_remaining == 0:
-                # Motor just turned on, start a new 2-hour cycle
+                # Motor just turned on (or resumed after shed), start a new wash cycle
                 self.cycle_steps_remaining = self.cycle_duration_steps
             else:
-                # Continue cycle
+                # Continue existing cycle
                 self.cycle_steps_remaining -= 1
                 # If cycle just completed, wash the clothes
                 if self.cycle_steps_remaining == 0:
@@ -101,12 +101,13 @@ class WashingMachine(Device):
                     if self.pending_clothes >= self.clothes_threshold:
                         self.cycle_steps_remaining = self.cycle_duration_steps
         else:
-            # Machine idle - clothes accumulate over time
-            self.pending_clothes += self.accumulation_rate
-            # Only reset cycle if not recovering from shed
+            # Machine is idle (or forcibly shed).
             if self.shed_timeout <= 0:
-                 self.cycle_steps_remaining = 0
-                 
+                self.pending_clothes += self.accumulation_rate
+
+            if self.shed_timeout <= 0:
+                self.cycle_steps_remaining = 0
+
             # Track waiting time when above threshold
             if self.pending_clothes >= self.clothes_threshold:
                 self.steps_waiting += 1
@@ -119,15 +120,15 @@ class WashingMachine(Device):
         Priority scale (0=lowest, 5=highest):
         - Base priority from clothes count
         - Increases with waiting time (steps since reaching threshold)
-        
-        Formula: Base priority increases by 1 for every 3 hours (3 steps) of waiting
-        
+
+        Formula: Base priority increases by 1 for every 3 steps of waiting.
+
         Returns:
             int: Priority value 0-5
         """
         if self.pending_clothes < self.clothes_threshold:
             return 0  # Not enough clothes, no priority
-        
+
         # Base priority from clothes count
         if self.pending_clothes >= 25:
             base_priority = 3
@@ -135,10 +136,10 @@ class WashingMachine(Device):
             base_priority = 2
         else:  # 10-19 clothes
             base_priority = 1
-        
-        # Add priority based on waiting time (1 priority per 3 hours/steps)
+
+        # Add priority based on waiting time (1 priority per 3 steps)
         waiting_bonus = self.steps_waiting // 3
-        
+
         raw_priority = base_priority + waiting_bonus
         # Apply price modifier: boost in cheap hours, penalize in expensive hours
         price_modifier = self._calculate_price_modifier()

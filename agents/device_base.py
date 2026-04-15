@@ -1,6 +1,8 @@
 import json
 import time
 import uuid
+import logging
+import threading
 from itertools import combinations
 from spade.agent import Agent
 from spade.behaviour import CyclicBehaviour, PeriodicBehaviour
@@ -13,9 +15,7 @@ try:
 except ImportError:
     GUI_AVAILABLE = False
 
-# Price normalization constants for priority modifier
-PRICE_MIN = 0.07
-PRICE_MAX = 0.27
+from config import PRICE_MIN, PRICE_MAX
 
 
 class Rule:
@@ -60,6 +60,8 @@ class Rule:
 class Device(Agent):
     """Base class for device agents with sensors, actuators, relations, and energy accounting."""
 
+    _class_lock = threading.Lock()
+
     # Track which shedders were already used in a committed negotiation per simulation slot.
     _slot_shed_registry = {}
     # Track pending power reservations from agents currently negotiating (race condition prevention)
@@ -68,10 +70,11 @@ class Device(Agent):
     @classmethod
     def _purge_old_slots(cls, current_day):
         """Remove slot entries from previous days to prevent memory leak."""
-        cls._slot_shed_registry = {
-            k: v for k, v in cls._slot_shed_registry.items()
-            if k[0] >= current_day
-        }
+        with cls._class_lock:
+            cls._slot_shed_registry = {
+                k: v for k, v in cls._slot_shed_registry.items()
+                if k[0] >= current_day
+            }
 
     def __init__(self, jid, password, device_type="generic", peers=None):
         super().__init__(jid, password)
@@ -135,12 +138,15 @@ class Device(Agent):
             data["power_kw"]
             for data in self.peer_power_status.values()
         )
-        # Include pending reservations from other agents to prevent race conditions
+        # Include pending reservations ONLY for agents NOT already represented
+        # in peer_power_status, to avoid counting the same agent twice.
+        known_peers = set(self.peer_power_status.keys())
         my_name = self._normalize_agent_name(self.name)
-        reservation_power = sum(
-            pw for name, pw in Device._pending_power_reservations.items()
-            if name != my_name
-        )
+        with Device._class_lock:
+            reservation_power = sum(
+                pw for name, pw in Device._pending_power_reservations.items()
+                if name != my_name and name not in known_peers
+            )
         return my_power + peer_power + reservation_power
 
     def _calculate_price_modifier(self):
@@ -259,10 +265,10 @@ class Device(Agent):
         if not GUI_AVAILABLE:
             return
         state = get_simulation_state()
-        
+
         # Format the event clearly with additional context
         tag_prefix = f"[{event}] " if event else ""
-        
+
         # Enhance messages with more details
         if "REQUEST to turn ON" in content:
             power = kwargs.get('power_kw', 0)
@@ -304,7 +310,7 @@ class Device(Agent):
                 content = "✗ Aborted (accepted shedding not enough)"
             else:
                 content = "✗ Aborted"
-            
+
         state.add_message(
             self._normalize_agent_name(sender),
             self._normalize_agent_name(receiver),
@@ -316,8 +322,9 @@ class Device(Agent):
 
         tx_id = uuid.uuid4().hex
         requester = self._normalize_agent_name(self.name)
-        # Register power reservation so concurrent negotiations see it
-        Device._pending_power_reservations[requester] = self.active_power_kw
+        # Register power reservation so concurrent negotiations see it (Bug 2: use lock)
+        with Device._class_lock:
+            Device._pending_power_reservations[requester] = self.active_power_kw
         current_power = self.get_power_consumption_kw()
         power_increase = max(0.0, self.active_power_kw - current_power)
         estimated_total = self.estimate_total_power() + power_increase
@@ -359,13 +366,12 @@ class Device(Agent):
             )
             await behaviour.send(peer_msg)
             self._log_p2p(
-                requester, peer_jid, "REQUEST to turn ON", 
+                requester, peer_jid, "REQUEST to turn ON",
                 event="REQUEST", tx_id=tx_id,
                 power_kw=self.active_power_kw,
                 priority=self.current_priority,
                 total_kw=estimated_total
             )
-
 
     async def _register_power_reply(self, data, msg_sender, behaviour):
         tx_id = data.get("transaction_id")
@@ -437,7 +443,6 @@ class Device(Agent):
                         shedding_candidates.append((peer_name, responder_priority, shed_power_kw))
 
                 # Optimize for the fewest devices first; tie-break by lower priorities.
-                # Candidate tuple: (peer_name, responder_priority, shed_power_kw)
                 for k in range(1, len(shedding_candidates) + 1):
                     feasible_sets = []
                     for candidate_set in combinations(shedding_candidates, k):
@@ -447,22 +452,22 @@ class Device(Agent):
                             feasible_sets.append((priorities, -total_shed, candidate_set))
 
                     if feasible_sets:
-                        # Lower priority vector first; if tie, prefer greater shed margin.
                         feasible_sets.sort(key=lambda item: (item[0], item[1]))
                         best_set = feasible_sets[0][2]
                         selected_shedders = [item[0] for item in best_set]
                         commit = True
                         break
 
-        # Simple guard against overlapping same-slot commits reusing the same shedder.
+        # Guard against overlapping same-slot commits reusing the same shedder (Bug 2: use lock)
         slot_key = negotiation.get("slot_key")
         if commit and overflow_kw > 0 and slot_key is not None:
-            used_shedders = Device._slot_shed_registry.setdefault(slot_key, set())
-            if any(peer in used_shedders for peer in selected_shedders):
-                commit = False
-                blocked_shedder_conflict = True
-            else:
-                used_shedders.update(selected_shedders)
+            with Device._class_lock:
+                used_shedders = Device._slot_shed_registry.setdefault(slot_key, set())
+                if any(peer in used_shedders for peer in selected_shedders):
+                    commit = False
+                    blocked_shedder_conflict = True
+                else:
+                    used_shedders.update(selected_shedders)
 
         for peer_jid in self.peers:
             peer_name = self._normalize_agent_name(peer_jid)
@@ -520,15 +525,17 @@ class Device(Agent):
                 reason = "insufficient accepted shedding"
             self._log_p2p(self.name, "all_peers", f"ABORT due to {reason}", event="ABORT", tx_id=tx_id)
 
-        # Clear reservation regardless of commit/abort
+        # Clear reservation regardless of commit/abort (Bug 2: use lock)
         requester = negotiation.get("requester", "")
-        Device._pending_power_reservations.pop(requester, None)
+        with Device._class_lock:
+            Device._pending_power_reservations.pop(requester, None)
         self.pending_negotiations.pop(tx_id, None)
 
     async def _apply_shedding(self, requester_name, tx_id, behaviour):
         from config import AGENTS
 
-        self.shed_timeout = 3
+        # Adding +1 ensures the net effective timeout after the decrement is exactly 3 steps.
+        self.shed_timeout = 4
         # Find the primary actuator (from the first "on" rule) and shed only that
         primary_actuator = None
         for rule in self.rules:
@@ -567,6 +574,7 @@ class Device(Agent):
                     # Calculate current priority based on world state
                     self.agent.current_priority = self.agent.calculate_priority(world_state)
 
+                    # so the net effective timeout is 3 steps as intended.
                     if self.agent.shed_timeout > 0:
                         self.agent.shed_timeout -= 1
 
@@ -599,6 +607,7 @@ class Device(Agent):
                             await self.send(power_status_msg)
 
                     # Notify world about hourly consumption
+                    # WorldAgent uses the correct price for this time slot's cost calculation.
                     consumption_msg = Message(to=AGENTS["world"])
                     consumption_msg.body = json.dumps({
                         "event": "device_consumption",
@@ -606,6 +615,7 @@ class Device(Agent):
                         "hour": world_state.get("hour"),
                         "minute": world_state.get("minute", 0),
                         "day": world_state.get("day"),
+                        "energy_price": world_state.get("energy_price", 0.12),
                         "power_kw": self.agent.get_power_consumption_kw(),
                         "consumption_kwh": self.agent.hourly_consumption_kwh,
                     })
@@ -635,7 +645,7 @@ class Device(Agent):
                         state.update_device_state(self.agent.name, device_state)
 
                 except (json.JSONDecodeError, KeyError) as e:
-                    print(f"[{self.agent.name}] Error parsing message: {e}")
+                    logging.warning(f"[{self.agent.name}] Error parsing world message: {e}")
 
     class PeerCommunicationBehaviour(CyclicBehaviour):
         """Escuta pedidos de peers e atualiza status de energia. Liberta carga se necessário (Shedding)."""
@@ -752,7 +762,7 @@ class Device(Agent):
                         )
 
                 except Exception as e:
-                    print(f"[{self.agent.name}] P2P Error: {e}")
+                    logging.warning(f"[{self.agent.name}] P2P Error: {e}")
 
     class NegotiationTimeoutBehaviour(PeriodicBehaviour):
         """Abort pending negotiations when replies do not arrive in time."""
@@ -772,7 +782,7 @@ class Device(Agent):
                     await self.agent._finalize_negotiation(tx_id, timed_out=True, behaviour=self)
 
     async def setup(self):
-                
+
         from spade.template import Template
         from config import AGENTS
 
@@ -780,12 +790,12 @@ class Device(Agent):
         for peer_jid in self.peers:
             peer_name = self._normalize_agent_name(peer_jid)
             self.peer_power_status[peer_name] = {"power_kw": 0.0, "timestamp": 0}
-        
+
         # Filtro para mensagens do Mundo
         world_template = Template()
         world_template.sender = AGENTS["world"]
         self.add_behaviour(self.MonitorEnvironment(), world_template)
-        
+
         # Filtro para mensagens P2P
         peer_template = Template()
         peer_template.metadata = {"ontology": "p2p"}
