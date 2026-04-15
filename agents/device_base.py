@@ -3,6 +3,8 @@ import time
 import uuid
 import logging
 import threading
+import asyncio
+import random
 from itertools import combinations
 from spade.agent import Agent
 from spade.behaviour import CyclicBehaviour, PeriodicBehaviour
@@ -129,25 +131,32 @@ class Device(Agent):
     def estimate_total_power(self):
         """Estimate current total power consumption from P2P data, own consumption,
         and pending power reservations from other agents currently negotiating.
+        Uses the higher value between last known status and pending reservation for each peer.
 
         Returns:
             float: Estimated total power in kW
         """
-        my_power = self.get_power_consumption_kw()
-        peer_power = sum(
-            data["power_kw"]
-            for data in self.peer_power_status.values()
-        )
-        # Include pending reservations ONLY for agents NOT already represented
-        # in peer_power_status, to avoid counting the same agent twice.
-        known_peers = set(self.peer_power_status.keys())
         my_name = self._normalize_agent_name(self.name)
+        total = self.get_power_consumption_kw()
+        
+        # Get all agent names we know about
+        all_peers = set(self.peer_power_status.keys())
         with Device._class_lock:
-            reservation_power = sum(
-                pw for name, pw in Device._pending_power_reservations.items()
-                if name != my_name and name not in known_peers
-            )
-        return my_power + peer_power + reservation_power
+            all_peers.update(Device._pending_power_reservations.keys())
+            
+        if my_name in all_peers:
+            all_peers.remove(my_name)
+            
+        for peer in all_peers:
+            status_p = self.peer_power_status.get(peer, {}).get("power_kw", 0.0)
+            with Device._class_lock:
+                res_p = Device._pending_power_reservations.get(peer, 0.0)
+            
+            # Pessimistic approach: assume the agent takes whichever is higher
+            # to prevent underestimation during activation transitions.
+            total += max(status_p, res_p)
+            
+        return total
 
     def _calculate_price_modifier(self):
         """Calculate priority modifier based on current energy price.
@@ -322,6 +331,10 @@ class Device(Agent):
 
         tx_id = uuid.uuid4().hex
         requester = self._normalize_agent_name(self.name)
+
+        # Introduction of Jitter to break synchronization of agents starting simultaneously
+        await asyncio.sleep(random.uniform(0.05, 0.35))
+
         # Register power reservation so concurrent negotiations see it (Bug 2: use lock)
         with Device._class_lock:
             Device._pending_power_reservations[requester] = self.active_power_kw
@@ -680,13 +693,18 @@ class Device(Agent):
 
                         # Calculate my current priority
                         my_priority = self.agent.current_priority if self.agent.current_priority is not None else 3
+                        my_name = self.agent._normalize_agent_name(self.agent.name)
+                        
                         current_power_kw = self.agent.get_power_consumption_kw()
                         shed_power_kw = max(0.0, current_power_kw - self.agent.idle_power_kw)
+
+                        # Locally recalculate total power instead of trusting delayed requester projection
+                        projected_total_kw = self.agent.estimate_total_power()
 
                         should_shed = (
                             projected_total_kw > max_power_kw
                             and shed_power_kw > 0
-                            and my_priority < req_priority
+                            and (my_priority < req_priority or (my_priority == req_priority and my_name > requester))
                         )
                         decision = "accept" if (projected_total_kw <= max_power_kw or should_shed) else "reject"
                         if should_shed:

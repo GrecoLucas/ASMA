@@ -44,7 +44,7 @@ class DishWasher(Device):
         self.cycle_steps_remaining = 0  # Steps remaining in current wash cycle
         self.cycle_duration_steps = 2   # 2 hours = 2 steps (with MINUTES_PER_STEP=60)
         self.dishes_per_cycle = 20      # How many dishes are washed per cycle
-        self.accumulation_rate = 2      # Dishes accumulated per time step when truly idle
+        self.accumulation_rate = 4      # Dishes accumulated per time step when truly idle
         self.steps_waiting = 0          # How many steps dishes have been waiting (>= threshold)
         self.price_sensitivity = 2      # High: very deferrable device
         self.current_energy_price = 0.12  # Updated each tick from world state
