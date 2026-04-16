@@ -1,14 +1,12 @@
 import tkinter as tk
 from tkinter import ttk
-import logging
-
+from PIL import Image, ImageTk
 
 class DevicesPanel:
     def __init__(self, parent):
         self.frame = ttk.LabelFrame(parent, text="Devices", padding=10)
         self.frame.pack(fill=tk.BOTH, expand=True)
 
-        # Scrollable frame for devices
         canvas = tk.Canvas(self.frame, bg="#1e1e1e", highlightthickness=0)
         scrollbar = ttk.Scrollbar(self.frame, orient=tk.VERTICAL, command=canvas.yview)
         scrollable_frame = ttk.Frame(canvas)
@@ -29,109 +27,108 @@ class DevicesPanel:
         self.current_col = 0
         self.current_row = 0
 
+        self.cog_frames = []
+        try:
+            cog_image = Image.open('ui/cog.gif')
+            while True:
+                frame = cog_image.convert('RGBA').resize((40, 40), Image.LANCZOS)
+                self.cog_frames.append(ImageTk.PhotoImage(frame))
+                cog_image.seek(cog_image.tell() + 1)
+        except EOFError:
+            pass
+
     def add_device_frame(self, device_name, device_type):
-        """Add a device display frame."""
         device_frame = ttk.LabelFrame(self.devices_container, text=f"{device_name.title()}", padding=10)
         device_frame.grid(row=self.current_row, column=self.current_col, padx=10, pady=10, sticky="nsew")
 
         self.current_col += 1
-        if self.current_col > 2:  # 3 items per row
+        if self.current_col > 2:
             self.current_col = 0
             self.current_row += 1
 
-        # Device info labels
         info = {}
 
         if device_type == "air_conditioner":
             info["priority"] = ttk.Label(device_frame, text="Priority: --", style="Info.TLabel")
             info["priority"].pack(anchor=tk.W, pady=2)
-
             info["status"] = ttk.Label(device_frame, text="Status: --", style="Heading.TLabel")
             info["status"].pack(anchor=tk.W, pady=2)
-
             info["temp"] = ttk.Label(device_frame, text="Current Temp: -- °C", style="Heading.TLabel")
             info["temp"].pack(anchor=tk.W, pady=2)
-
             info["target"] = ttk.Label(device_frame, text="Target Temp: -- °C", style="Heading.TLabel")
             info["target"].pack(anchor=tk.W, pady=2)
-
             info["power"] = ttk.Label(device_frame, text="Power: -- kW", style="Heading.TLabel")
             info["power"].pack(anchor=tk.W, pady=2)
-
             info["consumption"] = ttk.Label(device_frame, text="Hourly: -- kWh | Daily: -- kWh", style="Info.TLabel")
             info["consumption"].pack(anchor=tk.W, pady=2)
-
             info["comfort"] = ttk.Label(device_frame, text="Comfort: ----", style="Info.TLabel")
             info["comfort"].pack(anchor=tk.W, pady=2)
 
         elif device_type == "refrigerator":
             info["priority"] = ttk.Label(device_frame, text="Priority: --", style="Info.TLabel")
             info["priority"].pack(anchor=tk.W, pady=2)
-
             info["status"] = ttk.Label(device_frame, text="Compressor: --", style="Heading.TLabel")
             info["status"].pack(anchor=tk.W, pady=2)
-
             info["temp"] = ttk.Label(device_frame, text="Interior Temp: -- °C", style="Heading.TLabel")
             info["temp"].pack(anchor=tk.W, pady=2)
-
             info["target"] = ttk.Label(device_frame, text="Target Temp: -- °C", style="Heading.TLabel")
             info["target"].pack(anchor=tk.W, pady=2)
-
             info["power"] = ttk.Label(device_frame, text="Power: -- kW", style="Heading.TLabel")
             info["power"].pack(anchor=tk.W, pady=2)
-
             info["consumption"] = ttk.Label(device_frame, text="Hourly: -- kWh | Daily: -- kWh", style="Info.TLabel")
             info["consumption"].pack(anchor=tk.W, pady=2)
 
         elif device_type == "washing_machine":
             info["priority"] = ttk.Label(device_frame, text="Priority: --", style="Info.TLabel")
             info["priority"].pack(anchor=tk.W, pady=2)
-
             info["motor_status"] = ttk.Label(device_frame, text="Motor: --", style="Heading.TLabel")
             info["motor_status"].pack(anchor=tk.W, pady=2)
-
             info["pending_clothes"] = ttk.Label(device_frame, text="Pending Clothes: --", style="Heading.TLabel")
             info["pending_clothes"].pack(anchor=tk.W, pady=2)
-
             info["wash_cycles"] = ttk.Label(device_frame, text="Wash Cycles Remaining: --", style="Heading.TLabel")
             info["wash_cycles"].pack(anchor=tk.W, pady=2)
-
             info["power"] = ttk.Label(device_frame, text="Power: -- kW", style="Heading.TLabel")
             info["power"].pack(anchor=tk.W, pady=2)
-
             info["consumption"] = ttk.Label(device_frame, text="Hourly: -- kWh | Daily: -- kWh", style="Info.TLabel")
             info["consumption"].pack(anchor=tk.W, pady=2)
 
         elif device_type == "dish_washer":
             info["priority"] = ttk.Label(device_frame, text="Priority: --", style="Info.TLabel")
             info["priority"].pack(anchor=tk.W, pady=2)
-
             info["motor_status"] = ttk.Label(device_frame, text="Motor: --", style="Heading.TLabel")
             info["motor_status"].pack(anchor=tk.W, pady=2)
-
             info["pending_dishes"] = ttk.Label(device_frame, text="Pending Dishes: --", style="Heading.TLabel")
             info["pending_dishes"].pack(anchor=tk.W, pady=2)
-
             info["wash_cycles"] = ttk.Label(device_frame, text="Wash Cycles Remaining: --", style="Heading.TLabel")
             info["wash_cycles"].pack(anchor=tk.W, pady=2)
-
             info["power"] = ttk.Label(device_frame, text="Power: -- kW", style="Heading.TLabel")
             info["power"].pack(anchor=tk.W, pady=2)
-
             info["consumption"] = ttk.Label(device_frame, text="Hourly: -- kWh | Daily: -- kWh", style="Info.TLabel")
             info["consumption"].pack(anchor=tk.W, pady=2)
 
-        else:
-            # Fallback for unknown device types
-            info["status"] = ttk.Label(device_frame, text=f"Type: {device_type}", style="Info.TLabel")
-            info["status"].pack(anchor=tk.W, pady=2)
-            logging.warning(f"agents_ui: unknown device_type '{device_type}' for '{device_name}'")
+        # GIF pinned to the top-right corner of the LabelFrame.
+        # x=-5, y=20 nudges it just inside the border and below the title text.
+        animation_label = tk.Label(device_frame, bg="#1e1e1e", bd=0, highlightthickness=0)
+        animation_label.place(relx=1.0, rely=0.0, anchor="ne", x=-5, y=0)
 
         self.device_frames[device_name] = {
             "frame": device_frame,
             "labels": info,
-            "type": device_type
+            "type": device_type,
+            "animation_label": animation_label,
+            "animating": False,
+            "current_image": None
         }
+
+    def start_animation(self, label, device_name):
+        def animate(frame=0):
+            if self.device_frames[device_name]['animating']:
+                photo = self.cog_frames[frame]
+                self.device_frames[device_name]['current_image'] = photo
+                label.config(image=photo)
+                label.image = photo
+                label.after(100, animate, (frame + 1) % len(self.cog_frames))
+        animate()
 
     def update_devices(self, state):
         for device_name in state.get_all_devices():
@@ -155,26 +152,18 @@ class DevicesPanel:
                 priority = device_state.get("priority", "-")
 
                 device_info["labels"]["priority"].config(text=f"Priority: {priority}")
-
                 if status == 'ON':
-                    status_text = "Status: ON"
-                    status_color = "#00ff88"
+                    status_text, status_color = "Status: ON", "#00ff88"
                 else:
-                    status_text = "Status: OFF"
-                    status_color = "#ff3333"
+                    status_text, status_color = "Status: OFF", "#ff3333"
                 device_info["labels"]["status"].config(text=status_text, foreground=status_color)
                 device_info["labels"]["temp"].config(text=f"Current Temp: {current_temp:.1f} °C")
                 device_info["labels"]["target"].config(text=f"Target Temp: {target_temp:.1f} °C ±{temp_margin:.1f}°C")
                 device_info["labels"]["power"].config(text=f"Power: {power_kw:.2f} kW / {max_power_kw:.2f} kW")
-                device_info["labels"]["consumption"].config(
-                    text=f"Hourly: {hourly_consumption_kwh:.3f} kWh | Daily: {daily_consumption_kwh:.3f} kWh"
-                )
-
-                if current_temp >= target_temp - temp_margin and current_temp <= target_temp + temp_margin:
-                    comfort = "✅ Comfortable"
-                else:
-                    comfort = "❌ Outside range"
+                device_info["labels"]["consumption"].config(text=f"Hourly: {hourly_consumption_kwh:.3f} kWh | Daily: {daily_consumption_kwh:.3f} kWh")
+                comfort = "✅ Comfortable" if target_temp - temp_margin <= current_temp <= target_temp + temp_margin else "❌ Outside range"
                 device_info["labels"]["comfort"].config(text=f"Comfort: {comfort}")
+                is_on = status == 'ON'
 
             elif device_info["type"] == "refrigerator":
                 status = device_state.get("compressor_status", "Unknown")
@@ -188,20 +177,16 @@ class DevicesPanel:
                 priority = device_state.get("priority", "-")
 
                 device_info["labels"]["priority"].config(text=f"Priority: {priority}")
-
                 if status == 'RUNNING':
-                    status_text = "Status: ON"
-                    status_color = "#00ff88"
+                    status_text, status_color = "Compressor: ON", "#00ff88"
                 else:
-                    status_text = "Status: OFF"
-                    status_color = "#ff3333"
+                    status_text, status_color = "Compressor: OFF", "#ff3333"
                 device_info["labels"]["status"].config(text=status_text, foreground=status_color)
                 device_info["labels"]["temp"].config(text=f"Interior Temp: {current_temp:.1f} °C")
                 device_info["labels"]["target"].config(text=f"Target Temp: {target_temp:.1f} °C ±{temp_margin:.1f}°C")
                 device_info["labels"]["power"].config(text=f"Power: {power_kw:.2f} kW / {max_power_kw:.2f} kW")
-                device_info["labels"]["consumption"].config(
-                    text=f"Hourly: {hourly_consumption_kwh:.3f} kWh | Daily: {daily_consumption_kwh:.3f} kWh"
-                )
+                device_info["labels"]["consumption"].config(text=f"Hourly: {hourly_consumption_kwh:.3f} kWh | Daily: {daily_consumption_kwh:.3f} kWh")
+                is_on = status == 'RUNNING'
 
             elif device_info["type"] == "washing_machine":
                 motor_status = device_state.get("motor_status", "Unknown")
@@ -214,23 +199,18 @@ class DevicesPanel:
                 priority = device_state.get("priority", "-")
 
                 device_info["labels"]["priority"].config(text=f"Priority: {priority}")
-
                 if motor_status == 'WASHING':
-                    motor_text = "Motor: ON"
-                    motor_color = "#00ff88"
+                    motor_text, motor_color = "Motor: ON", "#00ff88"
                 else:
-                    motor_text = "Motor: OFF"
-                    motor_color = "#ff3333"
+                    motor_text, motor_color = "Motor: OFF", "#ff3333"
                 device_info["labels"]["motor_status"].config(text=motor_text, foreground=motor_color)
                 device_info["labels"]["pending_clothes"].config(text=f"Pending Clothes: {pending_clothes}")
                 device_info["labels"]["wash_cycles"].config(text=f"Wash Cycles Remaining: {wash_cycles_remaining}")
                 device_info["labels"]["power"].config(text=f"Power: {power_kw:.2f} kW / {max_power_kw:.2f} kW")
-                device_info["labels"]["consumption"].config(
-                    text=f"Hourly: {hourly_consumption_kwh:.3f} kWh | Daily: {daily_consumption_kwh:.3f} kWh"
-                )
+                device_info["labels"]["consumption"].config(text=f"Hourly: {hourly_consumption_kwh:.3f} kWh | Daily: {daily_consumption_kwh:.3f} kWh")
+                is_on = motor_status == 'WASHING'
 
             elif device_info["type"] == "dish_washer":
-                # Bug 4 fix: add missing update handler for dish_washer type
                 motor_status = device_state.get("motor_status", "Unknown")
                 pending_dishes = device_state.get("pending_dishes", 0)
                 wash_cycles_remaining = device_state.get("cycle_steps_remaining", 0)
@@ -241,17 +221,23 @@ class DevicesPanel:
                 priority = device_state.get("priority", "-")
 
                 device_info["labels"]["priority"].config(text=f"Priority: {priority}")
-
                 if motor_status == 'WASHING':
-                    motor_text = "Motor: ON"
-                    motor_color = "#00ff88"
+                    motor_text, motor_color = "Motor: ON", "#00ff88"
                 else:
-                    motor_text = "Motor: OFF"
-                    motor_color = "#ff3333"
+                    motor_text, motor_color = "Motor: OFF", "#ff3333"
                 device_info["labels"]["motor_status"].config(text=motor_text, foreground=motor_color)
                 device_info["labels"]["pending_dishes"].config(text=f"Pending Dishes: {pending_dishes}")
                 device_info["labels"]["wash_cycles"].config(text=f"Wash Cycles Remaining: {wash_cycles_remaining}")
                 device_info["labels"]["power"].config(text=f"Power: {power_kw:.2f} kW / {max_power_kw:.2f} kW")
-                device_info["labels"]["consumption"].config(
-                    text=f"Hourly: {hourly_consumption_kwh:.3f} kWh | Daily: {daily_consumption_kwh:.3f} kWh"
-                )
+                device_info["labels"]["consumption"].config(text=f"Hourly: {hourly_consumption_kwh:.3f} kWh | Daily: {daily_consumption_kwh:.3f} kWh")
+                is_on = motor_status == 'WASHING'
+            else:
+                continue
+
+            # Unified animation toggle
+            if is_on and not device_info['animating']:
+                device_info['animating'] = True
+                self.start_animation(device_info['animation_label'], device_name)
+            elif not is_on and device_info['animating']:
+                device_info['animation_label'].config(image='')
+                device_info['animating'] = False
