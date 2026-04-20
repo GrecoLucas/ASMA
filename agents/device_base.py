@@ -333,7 +333,7 @@ class Device(Agent):
         requester = self._normalize_agent_name(self.name)
 
         # Introduction of Jitter to break synchronization of agents starting simultaneously
-        await asyncio.sleep(random.uniform(0.05, 0.35))
+        await asyncio.sleep(random.uniform(0.1, 2.0))
 
         # Register power reservation so concurrent negotiations see it (Bug 2: use lock)
         with Device._class_lock:

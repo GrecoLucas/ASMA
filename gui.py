@@ -70,8 +70,11 @@ class SimulationState:
             formatted = []
             for m in self.messages:
                 if isinstance(m, dict):
-                    receivers = ", ".join(m['receivers'])
-                    formatted.append(f"{m['time']} {m['sender']} -> {receivers}: {m['content']}")
+                    if len(m['receivers']) > 1:
+                        target = "peers"
+                    else:
+                        target = m['receivers'][0] if m['receivers'] else "none"
+                    formatted.append(f"{m['time']} {m['sender']} -> {target}: {m['content']}")
                 else:
                     formatted.append(m)
             return formatted
@@ -193,7 +196,7 @@ class SimulationGUI:
         self.daily_consumption_label = ttk.Label(info_frame, text="-- kWh", style="Value.TLabel")
         self.daily_consumption_label.grid(row=1, column=3, sticky=tk.W, padx=5, pady=2)
 
-        ttk.Label(info_frame, text="Daily Grid Cost:", style="Heading.TLabel").grid(row=1, column=4, sticky=tk.W, padx=5, pady=2)
+        ttk.Label(info_frame, text="Last 24h cost:", style="Heading.TLabel").grid(row=1, column=4, sticky=tk.W, padx=5, pady=2)
         self.cost_label = ttk.Label(info_frame, text="-- €", style="Value.TLabel")
         self.cost_label.grid(row=1, column=5, sticky=tk.W, padx=5, pady=2)
 
