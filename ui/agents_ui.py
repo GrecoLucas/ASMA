@@ -118,6 +118,19 @@ class DevicesPanel:
             info["solar_charge"] = ttk.Label(device_frame, text="Solar Charge: -- kW", style="Heading.TLabel")
             info["solar_charge"].pack(anchor=tk.W, pady=2)
 
+        elif device_type == "air_fryer":
+            info["priority"] = ttk.Label(device_frame, text="Priority: --", style="Info.TLabel")
+            info["priority"].pack(anchor=tk.W, pady=2)
+            info["status"] = ttk.Label(device_frame, text="Status: --", style="Heading.TLabel")
+            info["status"].pack(anchor=tk.W, pady=2)
+            info["timer"] = ttk.Label(device_frame, text="Remaining: -- min", style="Heading.TLabel")
+            info["timer"].pack(anchor=tk.W, pady=2)
+            info["power"] = ttk.Label(device_frame, text="Power: -- kW", style="Heading.TLabel")
+            info["power"].pack(anchor=tk.W, pady=2)
+            info["consumption"] = ttk.Label(device_frame, text="Hourly: -- kWh | Daily: -- kWh", style="Info.TLabel")
+            info["consumption"].pack(anchor=tk.W, pady=2)
+
+
 
         # GIF pinned to the top-right corner of the LabelFrame.
         # x=-5, y=20 nudges it just inside the border and below the title text.
@@ -260,6 +273,27 @@ class DevicesPanel:
                 device_info["labels"]["power_provided"].config(text=f"Provided to House: {provided_power:.2f} kW", foreground="#00ff88")
                 device_info["labels"]["solar_charge"].config(text=f"Solar Charge: {solar_charge:.2f} kW", foreground="#ffff00")
                 is_on = status != "IDLE"
+
+            elif device_info["type"] == "air_fryer":
+                status = device_state.get("status", "Unknown")
+                timer = device_state.get("cycle_minutes_remaining", 0)
+                power_kw = device_state.get("power_kw", 0.0)
+                max_power_kw = device_state.get("max_power_kw", 0.0)
+                hourly_consumption_kwh = device_state.get("hourly_consumption_kwh", 0.0)
+                daily_consumption_kwh = device_state.get("daily_consumption_kwh", 0.0)
+                priority = device_state.get("priority", "-")
+
+                device_info["labels"]["priority"].config(text=f"Priority: {priority}")
+                if status == 'ON':
+                    status_text, status_color = "Status: ON", "#00ff88"
+                else:
+                    status_text, status_color = "Status: OFF", "#ff3333"
+                device_info["labels"]["status"].config(text=status_text, foreground=status_color)
+                device_info["labels"]["timer"].config(text=f"Remaining: {timer} min")
+                device_info["labels"]["power"].config(text=f"Power: {power_kw:.2f} kW / {max_power_kw:.2f} kW")
+                device_info["labels"]["consumption"].config(text=f"Hourly: {hourly_consumption_kwh:.3f} kWh | Daily: {daily_consumption_kwh:.3f} kWh")
+                is_on = status == 'ON'
+
 
 
             else:
