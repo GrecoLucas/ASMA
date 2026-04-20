@@ -229,10 +229,14 @@ class WorldAgent(Agent):
 
     def apply_device_effects(self):
         """Apply temperature effects from active devices."""
-        # AC cooling effect
-        if self.active_devices.get("ac.livingroom") == "ON":
-            # AC cools the environment gradually, reduced to step scale
-            self.current_temperature -= 0.8 * (MINUTES_PER_STEP / 60.0)
+        ac_state = self.active_devices.get("ac.livingroom")
+        if ac_state in ("ON", "COOLING", "HEATING"):
+            ac_delta = 0.8 * (MINUTES_PER_STEP / 60.0)
+            if ac_state == "HEATING":
+                self.current_temperature += ac_delta
+            else:
+                # Backwards-compatible default for legacy ON states.
+                self.current_temperature -= ac_delta
 
         # Fridge cooling effect (minor, mostly contained)
         if self.active_devices.get("fridge") == "ON":

@@ -527,11 +527,14 @@ class Device(Agent):
                 overflow_kw=overflow_kw,
             )
             notify_msg = Message(to=AGENTS["world"])
+            state_value = "ON"
+            if self.device_type == "air_conditioner":
+                state_value = self.get_operating_state()
             notify_msg.body = json.dumps(
                 {
                     "event": "state_changed",
                     "device_name": self._normalize_agent_name(self.name),
-                    "state": "ON",
+                    "state": state_value,
                 }
             )
             await behaviour.send(notify_msg)
@@ -659,10 +662,13 @@ class Device(Agent):
                                 continue
 
                             notify_msg = Message(to=AGENTS["world"])
+                            state_value = rule.command.upper()
+                            if self.agent.device_type == "air_conditioner" and rule.command == "on":
+                                state_value = self.agent.get_operating_state()
                             notify_msg.body = json.dumps({
                                 "event": "state_changed",
                                 "device_name": device_name,
-                                "state": rule.command.upper(),
+                                "state": state_value,
                             })
                             await self.send(notify_msg)
 

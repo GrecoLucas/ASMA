@@ -1,0 +1,21 @@
+version: "3.9"
+
+# Spins up a local Prosody XMPP server that the SPADE agents connect to.
+# All agent accounts are created automatically via in-band registration
+# (auto_register=True in main.py), so no manual setup is needed.
+
+services:
+  prosody:
+    image: prosody/prosody:latest
+    container_name: prosody_xmpp
+    user: "0:0"
+    ports:
+      - "5222:5222" # client-to-server (XMPP)
+      - "5269:5269" # server-to-server (not needed locally)
+      - "5280:5280" # HTTP admin console
+    environment:
+      # Tell Prosody to accept connections for "localhost"
+      - PROSODY_DOMAIN=localhost
+    volumes:
+      - ./prosody.cfg.lua:/etc/prosody/conf.d/localhost.cfg.lua:ro
+    restart: unless-stopped
