@@ -167,7 +167,7 @@ class SimulationGUI:
         info_frame = ttk.Frame(world_frame)
         info_frame.pack(fill=tk.X)
 
-        # Row 1: Time, Season, Temp, Solar, Price, Day
+        # Row 1: Time, Season, Temp, Price, Day
         self.time_label = ttk.Label(info_frame, text="Time: --:-- | Season: ----", style="Value.TLabel")
         self.time_label.grid(row=0, column=0, columnspan=2, sticky=tk.W, pady=2)
 
@@ -175,19 +175,15 @@ class SimulationGUI:
         self.temp_label = ttk.Label(info_frame, text="-- °C", style="Value.TLabel")
         self.temp_label.grid(row=0, column=3, sticky=tk.W, padx=5)
 
-        ttk.Label(info_frame, text="Solar:", style="Heading.TLabel").grid(row=0, column=4, sticky=tk.W, padx=5)
-        self.solar_label = ttk.Label(info_frame, text="-- kW", style="Value.TLabel")
-        self.solar_label.grid(row=0, column=5, sticky=tk.W, padx=5)
-
-        ttk.Label(info_frame, text="Price:", style="Heading.TLabel").grid(row=0, column=6, sticky=tk.W, padx=5)
+        ttk.Label(info_frame, text="Price:", style="Heading.TLabel").grid(row=0, column=4, sticky=tk.W, padx=5)
         self.price_label = ttk.Label(info_frame, text="-- €/kWh", style="Value.TLabel")
-        self.price_label.grid(row=0, column=7, sticky=tk.W, padx=5)
+        self.price_label.grid(row=0, column=5, sticky=tk.W, padx=5)
         
-        ttk.Label(info_frame, text="Day:", style="Heading.TLabel").grid(row=0, column=8, sticky=tk.W, padx=5)
+        ttk.Label(info_frame, text="Day:", style="Heading.TLabel").grid(row=0, column=6, sticky=tk.W, padx=5)
         self.day_label = ttk.Label(info_frame, text="--", style="Value.TLabel")
-        self.day_label.grid(row=0, column=9, sticky=tk.W, padx=5)
+        self.day_label.grid(row=0, column=7, sticky=tk.W, padx=5)
 
-        # Row 2: Consumptions, Costs, renewable, power usage
+        # Row 2: Consumptions, Costs, power usage
         ttk.Label(info_frame, text="Last Hour Cons:", style="Heading.TLabel").grid(row=1, column=0, sticky=tk.W, padx=5, pady=2)
         self.hourly_consumption_label = ttk.Label(info_frame, text="-- kWh", style="Value.TLabel")
         self.hourly_consumption_label.grid(row=1, column=1, sticky=tk.W, padx=5, pady=2)
@@ -200,13 +196,9 @@ class SimulationGUI:
         self.cost_label = ttk.Label(info_frame, text="-- €", style="Value.TLabel")
         self.cost_label.grid(row=1, column=5, sticky=tk.W, padx=5, pady=2)
 
-        ttk.Label(info_frame, text="Daily Renewable Used:", style="Heading.TLabel").grid(row=1, column=6, sticky=tk.W, padx=5, pady=2)
-        self.renewable_label = ttk.Label(info_frame, text="-- %", style="Value.TLabel")
-        self.renewable_label.grid(row=1, column=7, sticky=tk.W, padx=5, pady=2)
-
-        ttk.Label(info_frame, text="Net Power:", style="Heading.TLabel").grid(row=1, column=8, sticky=tk.W, padx=5, pady=2)
+        ttk.Label(info_frame, text="Net Power:", style="Heading.TLabel").grid(row=1, column=6, sticky=tk.W, padx=5, pady=2)
         self.power_usage_label = ttk.Label(info_frame, text="-- kW / 7.00 kW", style="Value.TLabel")
-        self.power_usage_label.grid(row=1, column=9, sticky=tk.W, padx=5, pady=2)
+        self.power_usage_label.grid(row=1, column=7, sticky=tk.W, padx=5, pady=2)
 
 
 
@@ -220,42 +212,27 @@ class SimulationGUI:
         season = world.get("season", "unknown").title()
         self.time_label.config(text=f"Time: {hour:02d}:{minute:02d} | Season: {season}")
         self.temp_label.config(text=f"{world.get('temperature') or 0.0:.1f} °C")
-        self.solar_label.config(text=f"{world.get('solar_production') or 0.0:.2f} kW")
         self.price_label.config(text=f"{world.get('energy_price') or 0.0:.3f} €/kWh")
         self.day_label.config(text=f"Day {world.get('day') or 0}")
         self.hourly_consumption_label.config(text=f"{world.get('hourly_consumption_total_kwh') or 0.0:.3f} kWh")
         self.daily_consumption_label.config(text=f"{world.get('daily_consumption_total_kwh') or 0.0:.3f} kWh")
         self.cost_label.config(text=f"{world.get('daily_cost_euro') or 0.0:.3f} €", foreground="#ffb347")
         
-        # Calculate renewable percentage - tracks renewable energy USED by devices
-        renewable_kwh = world.get('daily_renewable_kwh') or 0.0
-        
-        # Only count positive consumption from actual devices (not solar generation)
-        device_consumption = world.get('device_daily_consumption_kwh', {})
-        positive_consumption = sum(
-            kwh for name, kwh in device_consumption.items() 
-            if kwh > 0 and name != "solar"
-        )
-        
-        if positive_consumption > 0:
-            pct = (renewable_kwh / positive_consumption) * 100
-            pct = min(pct, 100.0)  # Cap at 100% for display
-        else:
-            pct = 0.0
-        
-        self.renewable_label.config(text=f"{pct:.1f}%", foreground="#00ff88")
-
         # Calculate current total power consumption from all devices
         from config import MAX_POWER_KW
         total_power = 0.0
+        total_provided = 0.0
         device_names = self.state.get_all_devices()
         for device_name in device_names:
             device_state = self.state.get_device_state(device_name)
             total_power += device_state.get("power_kw", 0.0)
+            total_provided += device_state.get("provided_power_kw", 0.0)
+
+        dynamic_limit = MAX_POWER_KW + total_provided
 
         # Update power usage display with color coding
         # For Net power, it can be negative (injecting to grid).
-        power_percentage = (total_power / MAX_POWER_KW) * 100 if MAX_POWER_KW > 0 else 0
+        power_percentage = (total_power / dynamic_limit) * 100 if dynamic_limit > 0 else 0
         if total_power < 0:
             power_color = "#00d4ff" # Blue - injecting
         elif power_percentage >= 100:
@@ -268,7 +245,7 @@ class SimulationGUI:
             power_color = "#00ff88"  # Green - normal
 
         self.power_usage_label.config(
-            text=f"{total_power:.2f} kW / {MAX_POWER_KW:.2f} kW",
+            text=f"{total_power:.2f} kW / {dynamic_limit:.2f} kW",
             foreground=power_color
         )
 

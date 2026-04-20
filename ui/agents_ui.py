@@ -106,6 +106,19 @@ class DevicesPanel:
             info["consumption"] = ttk.Label(device_frame, text="Hourly: -- kWh | Daily: -- kWh", style="Info.TLabel")
             info["consumption"].pack(anchor=tk.W, pady=2)
 
+        elif device_type == "battery":
+            info["priority"] = ttk.Label(device_frame, text="Priority: --", style="Info.TLabel")
+            info["priority"].pack(anchor=tk.W, pady=2)
+            info["status"] = ttk.Label(device_frame, text="State: --", style="Heading.TLabel")
+            info["status"].pack(anchor=tk.W, pady=2)
+            info["level"] = ttk.Label(device_frame, text="Charge Level: -- %", style="Heading.TLabel")
+            info["level"].pack(anchor=tk.W, pady=2)
+            info["power_provided"] = ttk.Label(device_frame, text="Provided to House: -- kW", style="Heading.TLabel")
+            info["power_provided"].pack(anchor=tk.W, pady=2)
+            info["solar_charge"] = ttk.Label(device_frame, text="Solar Charge: -- kW", style="Heading.TLabel")
+            info["solar_charge"].pack(anchor=tk.W, pady=2)
+
+
         # GIF pinned to the top-right corner of the LabelFrame.
         # x=-5, y=20 nudges it just inside the border and below the title text.
         animation_label = tk.Label(device_frame, bg="#1e1e1e", bd=0, highlightthickness=0)
@@ -231,6 +244,24 @@ class DevicesPanel:
                 device_info["labels"]["power"].config(text=f"Power: {power_kw:.2f} kW / {max_power_kw:.2f} kW")
                 device_info["labels"]["consumption"].config(text=f"Hourly: {hourly_consumption_kwh:.3f} kWh | Daily: {daily_consumption_kwh:.3f} kWh")
                 is_on = motor_status == 'WASHING'
+
+            elif device_info["type"] == "battery":
+                status = device_state.get("status", "Unknown")
+                level = device_state.get("battery_level", 0.0)
+                provided_power = device_state.get("provided_power_kw", 0.0)
+                solar_charge = device_state.get("solar_charge_kw", 0.0)
+                priority = device_state.get("priority", "-")
+
+                device_info["labels"]["priority"].config(text=f"Priority: {priority}")
+
+                status_color = "#ffff00" if "solar panels" in status.lower() else ("#00ff88" if "DISCHARGING" in status else "#b0b0b0")
+                device_info["labels"]["status"].config(text=f"State: {status}", foreground=status_color)
+                device_info["labels"]["level"].config(text=f"Charge Level: {level:.1f}%")
+                device_info["labels"]["power_provided"].config(text=f"Provided to House: {provided_power:.2f} kW", foreground="#00ff88")
+                device_info["labels"]["solar_charge"].config(text=f"Solar Charge: {solar_charge:.2f} kW", foreground="#ffff00")
+                is_on = status != "IDLE"
+
+
             else:
                 continue
 

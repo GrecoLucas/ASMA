@@ -148,15 +148,19 @@ class Device(Agent):
             all_peers.remove(my_name)
             
         for peer in all_peers:
-            status_p = self.peer_power_status.get(peer, {}).get("power_kw", 0.0)
+            status = self.peer_power_status.get(peer, {})
+            status_p = status.get("power_kw", 0.0)
+            provided_p = status.get("provided_power_kw", 0.0)
+            
             with Device._class_lock:
                 res_p = Device._pending_power_reservations.get(peer, 0.0)
             
-            # Pessimistic approach: assume the agent takes whichever is higher
-            # to prevent underestimation during activation transitions.
+            # Add consumption, subtract provision
             total += max(status_p, res_p)
+            total -= provided_p
             
         return total
+
 
     def _calculate_price_modifier(self):
         """Calculate priority modifier based on current energy price.
@@ -220,6 +224,11 @@ class Device(Agent):
     def get_power_consumption_kw(self):
         """Return current power draw in kW. Override for custom behavior."""
         return self.idle_power_kw
+
+    def get_provided_power_kw(self):
+        """Return power provided to the system (e.g. by battery). Override in subclasses."""
+        return 0.0
+
 
     def get_hourly_consumption_kwh(self, world_state):
         """For configurable simulation steps, kWh equals a fraction of current kW draw."""
@@ -429,13 +438,17 @@ class Device(Agent):
             return
 
         requester_priority = self.current_priority if self.current_priority is not None else 3
-        overflow_kw = max(0.0, negotiation["estimated_total_kw"] - negotiation["max_power_kw"])
 
         accepted_replies = {
             peer_name: reply
             for peer_name, reply in negotiation["replies"].items()
             if reply.get("decision") == "accept"
         }
+
+        # The battery (provider) offers "extra" capacity to the grid.
+        # We sum all provided power and subtract it from the gross total before comparing to the wall limit.
+        total_provided = sum(float(r.get("provided_power_kw", 0.0)) for r in accepted_replies.values())
+        overflow_kw = max(0.0, (negotiation["estimated_total_kw"] - total_provided) - negotiation["max_power_kw"])
 
         selected_shedders = []
         commit = False
@@ -615,6 +628,7 @@ class Device(Agent):
                                 "event": "power_status",
                                 "device_name": device_name,
                                 "power_kw": round(current_power, 3),
+                                "provided_power_kw": round(self.agent.get_provided_power_kw(), 3),
                                 "timestamp": world_state.get("hour", 0) * 60 + world_state.get("minute", 0)
                             })
                             await self.send(power_status_msg)
@@ -672,11 +686,12 @@ class Device(Agent):
                     if data.get("event") == "power_status":
                         device_name = data.get("device_name")
                         power_kw = data.get("power_kw", 0)
+                        provided_power_kw = data.get("provided_power_kw", 0)
                         timestamp = data.get("timestamp", 0)
-
-                        # Update peer power status
+ 
                         self.agent.peer_power_status[device_name] = {
                             "power_kw": power_kw,
+                            "provided_power_kw": provided_power_kw,
                             "timestamp": timestamp
                         }
 
