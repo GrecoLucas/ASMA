@@ -1,14 +1,19 @@
 import json
 from spade.message import Message
 from agents.device_base import Device
-from config import MINUTES_PER_STEP
+from config import (
+    MINUTES_PER_STEP, BATTERY_CAPACITY_KWH, BATTERY_MAX_POWER_KW,
+    BATTERY_INITIAL_CHARGE_PERCENT, BATTERY_SOLAR_CHARGE_START_HOUR,
+    BATTERY_SOLAR_CHARGE_END_HOUR, BATTERY_DISCHARGE_START_HOUR,
+    BATTERY_DISCHARGE_END_HOUR, BATTERY_PRIORITY
+)
 
 class BatteryAgent(Device):
-    def __init__(self, jid, password, capacity_kwh=5.0, max_power_kw=20.0, peers=None):
+    def __init__(self, jid, password, capacity_kwh=BATTERY_CAPACITY_KWH, max_power_kw=BATTERY_MAX_POWER_KW, peers=None):
         super().__init__(jid, password, device_type="battery", peers=peers)
         self.capacity_kwh = capacity_kwh
         self.max_power_kw = max_power_kw
-        self.charge_kwh = capacity_kwh / 2.0  # Começa com 50%
+        self.charge_kwh = capacity_kwh * BATTERY_INITIAL_CHARGE_PERCENT
         self.current_discharge_kw = 0.0
         self.current_charge_kw = 0.0
         self.current_hour = 0
@@ -28,13 +33,13 @@ class BatteryAgent(Device):
         self.current_charge_kw = 0.0 # Nunca carrega da rede (Grid = 0)
         self.current_discharge_kw = 0.0
 
-        # 1. Carregamento Solar (ex: entre 7h e 12h se houver sol)
-        if 7 <= h < 12 and self.solar_production > 0:
+        # 1. Carregamento Solar
+        if BATTERY_SOLAR_CHARGE_START_HOUR <= h < BATTERY_SOLAR_CHARGE_END_HOUR and self.solar_production > 0:
             self.solar_to_battery = min(self.solar_production * 2, self.max_power_kw)
         else:
             self.solar_to_battery = 0.0
-        # 2. Descarga para a Casa (13h-18h)
-        if 13 <= h < 18 and self.charge_kwh > 0:
+        # 2. Descarga para a Casa
+        if BATTERY_DISCHARGE_START_HOUR <= h < BATTERY_DISCHARGE_END_HOUR and self.charge_kwh > 0:
             self.current_discharge_kw = self.max_power_kw
         # Atualização física da carga
         net_flow = self.solar_to_battery - self.current_discharge_kw
@@ -52,7 +57,7 @@ class BatteryAgent(Device):
             "power_kw": round(self.current_charge_kw, 3), # Grid draw (0.0)
             "solar_charge_kw": round(solar_charging, 3),  # Solar draw
             "provided_power_kw": round(self.current_discharge_kw, 3),
-            "priority": -100,
+            "priority": BATTERY_PRIORITY,
         }
 
     class BatteryP2P(Device.PeerCommunicationBehaviour):
@@ -69,7 +74,7 @@ class BatteryAgent(Device):
                         "transaction_id": data.get("transaction_id"),
                         "decision": "accept",
                         "provided_power_kw": round(self.agent.current_discharge_kw, 3),
-                        "responder_priority": -100
+                        "responder_priority": BATTERY_PRIORITY
                     })
                     await self.send(reply)
 

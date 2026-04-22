@@ -17,7 +17,10 @@ try:
 except ImportError:
     GUI_AVAILABLE = False
 
-from config import PRICE_MIN, PRICE_MAX
+from config import (
+    PRICE_MIN, PRICE_MAX, DEFAULT_PRIORITY, DEFAULT_ENERGY_PRICE,
+    NEGOTIATION_JITTER_MAX, NEGOTIATION_TIMEOUT, SHED_TIMEOUT_STEPS
+)
 
 
 class Rule:
@@ -126,7 +129,7 @@ class Device(Agent):
         Returns:
             int: Priority value 0-5
         """
-        return 3  # Default medium priority
+        return DEFAULT_PRIORITY  # Default priority from config
 
     def estimate_total_power(self):
         """Estimate current total power consumption from P2P data, own consumption,
@@ -171,7 +174,7 @@ class Device(Agent):
         sensitivity = getattr(self, 'price_sensitivity', 0)
         if sensitivity == 0:
             return 0
-        price = getattr(self, 'current_energy_price', 0.12)
+        price = getattr(self, 'current_energy_price', DEFAULT_ENERGY_PRICE)
         normalized = (price - PRICE_MIN) / (PRICE_MAX - PRICE_MIN)
         normalized = max(0.0, min(1.0, normalized))
         return round(sensitivity * (1.0 - 2.0 * normalized))
@@ -342,7 +345,7 @@ class Device(Agent):
         requester = self._normalize_agent_name(self.name)
 
         # Introduction of Jitter to break synchronization of agents starting simultaneously
-        await asyncio.sleep(random.uniform(0.1, 2.0))
+        await asyncio.sleep(random.uniform(0.1, NEGOTIATION_JITTER_MAX))
 
         # Register power reservation so concurrent negotiations see it (Bug 2: use lock)
         with Device._class_lock:
@@ -411,7 +414,7 @@ class Device(Agent):
             "should_shed": should_shed,
             "reason": reason,
             "shed_power_kw": float(data.get("shed_power_kw", 0.0)),
-            "responder_priority": int(data.get("responder_priority", 3)),
+            "responder_priority": int(data.get("responder_priority", DEFAULT_PRIORITY)),
         }
 
         self._log_p2p(
@@ -423,7 +426,7 @@ class Device(Agent):
             decision=decision,
             reason=reason,
             shed_power_kw=float(data.get("shed_power_kw", 0.0)),
-            responder_priority=int(data.get("responder_priority", 3)),
+            responder_priority=int(data.get("responder_priority", DEFAULT_PRIORITY)),
         )
 
         expected = negotiation["expected_replies"]
@@ -437,7 +440,7 @@ class Device(Agent):
         if not negotiation:
             return
 
-        requester_priority = self.current_priority if self.current_priority is not None else 3
+        requester_priority = self.current_priority if self.current_priority is not None else DEFAULT_PRIORITY
 
         accepted_replies = {
             peer_name: reply
@@ -462,7 +465,7 @@ class Device(Agent):
             else:
                 shedding_candidates = []
                 for peer_name, reply in accepted_replies.items():
-                    responder_priority = int(reply.get("responder_priority", 3))
+                    responder_priority = int(reply.get("responder_priority", DEFAULT_PRIORITY))
                     shed_power_kw = float(reply.get("shed_power_kw", 0.0))
                     can_shed = bool(reply.get("should_shed", False)) and shed_power_kw > 0
                     if can_shed and responder_priority < requester_priority:
@@ -560,8 +563,8 @@ class Device(Agent):
     async def _apply_shedding(self, requester_name, tx_id, behaviour):
         from config import AGENTS
 
-        # Adding +1 ensures the net effective timeout after the decrement is exactly 3 steps.
-        self.shed_timeout = 4
+        # Adding +1 ensures the net effective timeout after the decrement is exactly the intended steps.
+        self.shed_timeout = SHED_TIMEOUT_STEPS + 1
         # Find the primary actuator (from the first "on" rule) and shed only that
         primary_actuator = None
         for rule in self.rules:
@@ -592,7 +595,7 @@ class Device(Agent):
         """Generic behavior that monitors environment and controls device using rules."""
 
         async def run(self):
-            msg = await self.receive(timeout=10)
+            msg = await self.receive(timeout=NEGOTIATION_TIMEOUT)
             if msg:
                 try:
                     world_state = json.loads(msg.body)
@@ -642,7 +645,7 @@ class Device(Agent):
                         "hour": world_state.get("hour"),
                         "minute": world_state.get("minute", 0),
                         "day": world_state.get("day"),
-                        "energy_price": world_state.get("energy_price", 0.12),
+                        "energy_price": world_state.get("energy_price", DEFAULT_ENERGY_PRICE),
                         "power_kw": self.agent.get_power_consumption_kw(),
                         "consumption_kwh": self.agent.hourly_consumption_kwh,
                     })
@@ -677,7 +680,7 @@ class Device(Agent):
     class PeerCommunicationBehaviour(CyclicBehaviour):
         """Escuta pedidos de peers e atualiza status de energia. Liberta carga se necessário (Shedding)."""
         async def run(self):
-            msg = await self.receive(timeout=10)
+            msg = await self.receive(timeout=NEGOTIATION_TIMEOUT)
             if msg:
                 try:
                     data = json.loads(msg.body)
@@ -704,10 +707,10 @@ class Device(Agent):
                         max_power_kw = data.get("max_power_kw", 7.0)
 
                         if req_priority is None:
-                            req_priority = 3
+                            req_priority = DEFAULT_PRIORITY
 
                         # Calculate my current priority
-                        my_priority = self.agent.current_priority if self.agent.current_priority is not None else 3
+                        my_priority = self.agent.current_priority if self.agent.current_priority is not None else DEFAULT_PRIORITY
                         my_name = self.agent._normalize_agent_name(self.agent.name)
                         
                         current_power_kw = self.agent.get_power_consumption_kw()

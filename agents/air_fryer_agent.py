@@ -1,4 +1,8 @@
 from .device_base import Device, Rule
+from config import (
+    AIR_FRYER_ACTIVE_POWER_KW, AIR_FRYER_IDLE_POWER_KW, AIR_FRYER_PRIORITY,
+    AIR_FRYER_START_HOUR, AIR_FRYER_END_HOUR, AIR_FRYER_CYCLE_DURATION_MINUTES
+)
 import json
 
 class CookingSensorComponent:
@@ -29,9 +33,9 @@ class AirFryerAgent(Device):
 
     def __init__(self, jid, password, peers=None):
         super().__init__(jid, password, device_type="air_fryer", peers=peers)
-        self.active_power_kw = 1.4
-        self.idle_power_kw = 0.0
-        self.current_priority = 5
+        self.active_power_kw = AIR_FRYER_ACTIVE_POWER_KW
+        self.idle_power_kw = AIR_FRYER_IDLE_POWER_KW
+        self.current_priority = AIR_FRYER_PRIORITY
         self.cycle_minutes_remaining = 0
         self.last_day_run = -1
 
@@ -61,17 +65,16 @@ class AirFryerAgent(Device):
         )
 
     def calculate_priority(self, world_state=None):
-        return 5
+        return AIR_FRYER_PRIORITY
 
     def update_sensors(self, world_state):
         from config import MINUTES_PER_STEP
         hour = world_state.get("hour", 0)
         day = world_state.get("day", 1)
 
-        # Trigger logic: Start at 15:00 if not yet run today
-        # (Using >= 15 as starting window)
-        if 15 <= hour < 18 and day != self.last_day_run and self.cycle_minutes_remaining == 0:
-            self.cycle_minutes_remaining = 120
+        # Trigger logic: Start at specified hour if not yet run today
+        if AIR_FRYER_START_HOUR <= hour < AIR_FRYER_END_HOUR and day != self.last_day_run and self.cycle_minutes_remaining == 0:
+            self.cycle_minutes_remaining = AIR_FRYER_CYCLE_DURATION_MINUTES
             self.last_day_run = day
 
         # Timer logic: Subtract the actual simulated minutes passed
@@ -89,7 +92,7 @@ class AirFryerAgent(Device):
     def get_device_state_for_gui(self):
         return {
             "device_type": "air_fryer",
-            "priority": 5,
+            "priority": AIR_FRYER_PRIORITY,
             "status": self.status.upper(),
             "cycle_minutes_remaining": self.cycle_minutes_remaining,
             "power_kw": round(self.get_power_consumption_kw(), 3),

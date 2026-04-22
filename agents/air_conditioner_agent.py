@@ -1,4 +1,8 @@
 from .device_base import Device, Rule
+from config import (
+    AC_TARGET_TEMP, AC_TEMP_MARGIN, AC_PRICE_SENSITIVITY, AC_ACTIVE_POWER_KW,
+    AC_IDLE_POWER_KW, AC_PRIORITY_THRESHOLDS, DEFAULT_ENERGY_PRICE
+)
 
 
 class TemperatureSensorComponent:
@@ -36,21 +40,21 @@ class ACActuatorComponent:
 class AirConditioner(Device):
     """Air conditioner device agent with temperature sensor and rule-based actuator control."""
 
-    def __init__(self, jid, password, target_temp=21, temp_margin=2, peers=None):
+    def __init__(self, jid, password, target_temp=AC_TARGET_TEMP, temp_margin=AC_TEMP_MARGIN, peers=None):
         super().__init__(jid, password, device_type="air_conditioner", peers=peers)
         self.target_temp = target_temp
         self.temp_margin = temp_margin
         self.current_temp = None
         self.current_hour = None
-        self.price_sensitivity = 1  # Low: comfort matters but can defer slightly
-        self.current_energy_price = 0.12  # Updated each tick from world state
+        self.price_sensitivity = AC_PRICE_SENSITIVITY  # Low: comfort matters but can defer slightly
+        self.current_energy_price = DEFAULT_ENERGY_PRICE  # Updated each tick from world state
 
         self.add_sensor("temperature", TemperatureSensorComponent())
         self.add_actuator("ac_switch", ACActuatorComponent())
 
         # Typical split AC consumption profile
-        self.active_power_kw = 1.35
-        self.idle_power_kw = 0.0
+        self.active_power_kw = AC_ACTIVE_POWER_KW
+        self.idle_power_kw = AC_IDLE_POWER_KW
 
         self.add_rule(
             Rule(
@@ -77,7 +81,7 @@ class AirConditioner(Device):
     def update_sensors(self, world_state):
         temperature = world_state.get("temperature")
         self.current_hour = world_state.get("hour")
-        self.current_energy_price = world_state.get("energy_price", 0.12)
+        self.current_energy_price = world_state.get("energy_price", DEFAULT_ENERGY_PRICE)
         self.current_temp = temperature
 
         if temperature is not None:
@@ -102,19 +106,19 @@ class AirConditioner(Device):
         temp_deviation = abs(self.current_temp - self.target_temp)
 
         # Extreme discomfort - health/safety concern
-        if temp_deviation >= 8:
+        if temp_deviation >= AC_PRIORITY_THRESHOLDS[0]:
             raw_priority = 5
 
         # High discomfort - very uncomfortable
-        elif temp_deviation >= 6:
+        elif temp_deviation >= AC_PRIORITY_THRESHOLDS[1]:
             raw_priority = 4
 
         # Moderate discomfort - uncomfortable
-        elif temp_deviation >= 4:
+        elif temp_deviation >= AC_PRIORITY_THRESHOLDS[2]:
             raw_priority = 3
 
         # Slight discomfort - noticeable but tolerable
-        elif temp_deviation >= 2:
+        elif temp_deviation >= AC_PRIORITY_THRESHOLDS[3]:
             raw_priority = 2
 
         # Comfortable - within acceptable range

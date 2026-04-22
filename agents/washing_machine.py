@@ -1,4 +1,11 @@
 from .device_base import Device, Rule
+from config import (
+    WASHING_MACHINE_THRESHOLD, WASHING_MACHINE_CYCLE_DURATION_STEPS,
+    WASHING_MACHINE_PER_CYCLE, WASHING_MACHINE_ACCUMULATION_RATE,
+    WASHING_MACHINE_PRICE_SENSITIVITY, WASHING_MACHINE_ACTIVE_POWER_KW,
+    WASHING_MACHINE_IDLE_POWER_KW, WASHING_MACHINE_WAITING_BONUS_DIVIDER,
+    WASHING_MACHINE_PRIORITY_THRESHOLDS, DEFAULT_ENERGY_PRICE
+)
 
 
 class LaundrySensorComponent:
@@ -36,32 +43,32 @@ class WashingMotorComponent:
 class WashingMachine(Device):
     """Washing machine device agent that washes clothes based on laundry accumulation."""
 
-    def __init__(self, jid, password, clothes_threshold=10, peers=None):
+    def __init__(self, jid, password, clothes_threshold=WASHING_MACHINE_THRESHOLD, peers=None):
         super().__init__(jid, password, device_type="washing_machine", peers=peers)
         self.clothes_threshold = clothes_threshold
         self.pending_clothes = 0
         self.current_hour = None
         self.cycle_steps_remaining = 0  # Steps remaining in current wash cycle
-        self.cycle_duration_steps = 2   # 2 hours = 2 steps (with MINUTES_PER_STEP=60)
-        self.clothes_per_cycle = 10     # How many clothes are washed per cycle
-        self.accumulation_rate = 2      # Clothes accumulated per time step when truly idle
+        self.cycle_duration_steps = WASHING_MACHINE_CYCLE_DURATION_STEPS
+        self.clothes_per_cycle = WASHING_MACHINE_PER_CYCLE
+        self.accumulation_rate = WASHING_MACHINE_ACCUMULATION_RATE
         self.steps_waiting = 0          # How many steps clothes have been waiting (>= threshold)
-        self.price_sensitivity = 2      # High: very deferrable device
-        self.current_energy_price = 0.12  # Updated each tick from world state
+        self.price_sensitivity = WASHING_MACHINE_PRICE_SENSITIVITY
+        self.current_energy_price = DEFAULT_ENERGY_PRICE  # Updated each tick from world state
 
         self.add_sensor("laundry", LaundrySensorComponent())
         self.add_actuator("motor", WashingMotorComponent())
 
-        # Power profile: active 0.5 kW, idle 0.0 kW
-        self.active_power_kw = 0.5
-        self.idle_power_kw = 0.0
+        # Power profile: active kW, idle kW
+        self.active_power_kw = WASHING_MACHINE_ACTIVE_POWER_KW
+        self.idle_power_kw = WASHING_MACHINE_IDLE_POWER_KW
 
         self.add_rule(
             Rule(
                 name="Start Washing - Enough Clothes",
                 sensor_name="laundry",
                 operator=">=",
-                threshold=10,
+                threshold=WASHING_MACHINE_THRESHOLD,
                 actuator_name="motor",
                 command="on",
             )
@@ -72,7 +79,7 @@ class WashingMachine(Device):
                 name="Stop Washing - No Clothes",
                 sensor_name="laundry",
                 operator="<",
-                threshold=10,
+                threshold=WASHING_MACHINE_THRESHOLD,
                 actuator_name="motor",
                 command="off",
             )
@@ -80,7 +87,7 @@ class WashingMachine(Device):
 
     def update_sensors(self, world_state):
         self.current_hour = world_state.get("hour")
-        self.current_energy_price = world_state.get("energy_price", 0.12)
+        self.current_energy_price = world_state.get("energy_price", DEFAULT_ENERGY_PRICE)
         motor = self.actuators["motor"]
 
         if motor.is_running:
@@ -130,15 +137,15 @@ class WashingMachine(Device):
             return 0  # Not enough clothes, no priority
 
         # Base priority from clothes count
-        if self.pending_clothes >= 25:
+        if self.pending_clothes >= WASHING_MACHINE_PRIORITY_THRESHOLDS[0]:
             base_priority = 3
-        elif self.pending_clothes >= 20:
+        elif self.pending_clothes >= WASHING_MACHINE_PRIORITY_THRESHOLDS[1]:
             base_priority = 2
-        else:  # 10-19 clothes
+        else:  # Threshold to First Threshold range
             base_priority = 1
 
-        # Add priority based on waiting time (1 priority per 3 steps)
-        waiting_bonus = self.steps_waiting // 3
+        # Add priority based on waiting time (1 priority per X steps)
+        waiting_bonus = self.steps_waiting // WASHING_MACHINE_WAITING_BONUS_DIVIDER
 
         raw_priority = base_priority + waiting_bonus
         # Apply price modifier: boost in cheap hours, penalize in expensive hours
