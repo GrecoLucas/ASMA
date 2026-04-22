@@ -138,16 +138,20 @@ class WashingMachine(Device):
 
         # Base priority from clothes count
         if self.pending_clothes >= WASHING_MACHINE_PRIORITY_THRESHOLDS[0]:
-            base_priority = 3
+            base_priority = 5
         elif self.pending_clothes >= WASHING_MACHINE_PRIORITY_THRESHOLDS[1]:
+            base_priority = 4
+        elif self.pending_clothes >= WASHING_MACHINE_PRIORITY_THRESHOLDS[2]:
+            base_priority = 3
+        elif self.pending_clothes >= WASHING_MACHINE_PRIORITY_THRESHOLDS[3]:
             base_priority = 2
         else:  # Threshold to First Threshold range
             base_priority = 1
 
         # Add priority based on waiting time (1 priority per X steps)
-        waiting_bonus = self.steps_waiting // WASHING_MACHINE_WAITING_BONUS_DIVIDER
+        #waiting_bonus = self.steps_waiting // WASHING_MACHINE_WAITING_BONUS_DIVIDER
 
-        raw_priority = base_priority + waiting_bonus
+        raw_priority = base_priority #+ waiting_bonus
         # Apply price modifier: boost in cheap hours, penalize in expensive hours
         price_modifier = self._calculate_price_modifier()
         # Cap at priority 5, floor at 0
