@@ -1,9 +1,10 @@
 from .device_base import Device, Rule
 from config import (
     AIR_FRYER_ACTIVE_POWER_KW, AIR_FRYER_IDLE_POWER_KW, AIR_FRYER_PRIORITY,
-    AIR_FRYER_START_HOUR, AIR_FRYER_END_HOUR, AIR_FRYER_CYCLE_DURATION_MINUTES
+    AIR_FRYER_CHANCE_PER_HOUR, AIR_FRYER_CYCLE_DURATION_MINUTES
 )
 import json
+import random
 
 class CookingSensorComponent:
     def __init__(self):
@@ -29,7 +30,7 @@ class SwitchComponent:
         return "Invalid command"
 
 class AirFryerAgent(Device):
-    """Air Fryer agent that runs for 1 hour every day between 15:00 and 18:00."""
+    """Air Fryer agent that has a random chance to start a cooking cycle each hour."""
 
     def __init__(self, jid, password, peers=None):
         super().__init__(jid, password, device_type="air_fryer", peers=peers)
@@ -69,13 +70,11 @@ class AirFryerAgent(Device):
 
     def update_sensors(self, world_state):
         from config import MINUTES_PER_STEP
-        hour = world_state.get("hour", 0)
-        day = world_state.get("day", 1)
-
-        # Trigger logic: Start at specified hour if not yet run today
-        if AIR_FRYER_START_HOUR <= hour < AIR_FRYER_END_HOUR and day != self.last_day_run and self.cycle_minutes_remaining == 0:
-            self.cycle_minutes_remaining = AIR_FRYER_CYCLE_DURATION_MINUTES
-            self.last_day_run = day
+        
+        # Trigger logic: Every hour (step), check for a random chance to start if idle
+        if self.cycle_minutes_remaining == 0:
+            if random.random() < AIR_FRYER_CHANCE_PER_HOUR:
+                self.cycle_minutes_remaining = AIR_FRYER_CYCLE_DURATION_MINUTES
 
         # Timer logic: Subtract the actual simulated minutes passed
         if self.status == "on" and self.cycle_minutes_remaining > 0:

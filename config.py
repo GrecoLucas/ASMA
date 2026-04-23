@@ -2,7 +2,7 @@
 
 XMPP_SERVER = "localhost"
 PASSWORD = "password_super_secreta"
-MAX_POWER_KW = 1.6  # Global power limit of the house for P2P negotiation
+MAX_POWER_KW = 1.8  # Global power limit of the house for P2P negotiation
 
 # JIDS of each agent
 AGENTS = {
@@ -58,8 +58,7 @@ HEATER_PRIORITY_THRESHOLDS = [8, 6, 4, 2] # Cold deviation thresholds for priori
 AIR_FRYER_ACTIVE_POWER_KW = 1.4
 AIR_FRYER_IDLE_POWER_KW = 0.0
 AIR_FRYER_PRIORITY = 5
-AIR_FRYER_START_HOUR = 15
-AIR_FRYER_END_HOUR = 18
+AIR_FRYER_CHANCE_PER_HOUR = 0.05
 AIR_FRYER_CYCLE_DURATION_MINUTES = 120
 
 # Battery
