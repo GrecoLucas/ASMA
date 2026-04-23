@@ -2,7 +2,7 @@ import asyncio
 from threading import Thread
 from config import AGENTS, PASSWORD, SIMULATION_SPEED
 from simulation.enviroment import WorldAgent
-from agents import AirConditioner, Refrigerator, WashingMachine, DishWasher, AirFryerAgent
+from agents import AirConditioner, Heater, Refrigerator, WashingMachine, DishWasher, AirFryerAgent
 from agents.battery_agent import BatteryAgent
 from gui import start_gui
 
@@ -14,15 +14,17 @@ async def main():
 
     # 1. Instantiate Device Agents
     ac_jid = AGENTS["ac_livingroom"]
+    heater_jid = AGENTS["heater_livingroom"]
     fridge_jid = AGENTS["fridge"]
     whashing_machine_jid = AGENTS["washing_machine"]
     dish_washer_jid = AGENTS["dish_washer"]
     battery_jid = AGENTS["battery"]
     air_fryer_jid = AGENTS["air_fryer"]
 
-    jid_list = [ac_jid, fridge_jid, whashing_machine_jid, dish_washer_jid, battery_jid, air_fryer_jid]
+    jid_list = [ac_jid, heater_jid, fridge_jid, whashing_machine_jid, dish_washer_jid, battery_jid, air_fryer_jid]
 
     ac_livingroom = AirConditioner(ac_jid, PASSWORD, target_temp=21, temp_margin=2, peers=[jid for jid in jid_list if jid != ac_jid])
+    heater_livingroom = Heater(heater_jid, PASSWORD, target_temp=21, temp_margin=2, peers=[jid for jid in jid_list if jid != heater_jid])
     fridge = Refrigerator(fridge_jid, PASSWORD, target_temp=4, temp_margin=1, peers=[jid for jid in jid_list if jid != fridge_jid])
     washingmachine = WashingMachine(whashing_machine_jid, PASSWORD, peers=[jid for jid in jid_list if jid != whashing_machine_jid])
     dish_washer = DishWasher(dish_washer_jid, PASSWORD, peers=[jid for jid in jid_list if jid != dish_washer_jid])
@@ -33,6 +35,7 @@ async def main():
 
     # Start all agents (devices first, then world broadcaster)
     await ac_livingroom.start(auto_register=True)
+    await heater_livingroom.start(auto_register=True)
     await fridge.start(auto_register=True)
     await washingmachine.start(auto_register=True)
     await dish_washer.start(auto_register=True)
@@ -48,6 +51,7 @@ async def main():
     finally:
         await world_agent.stop()
         await ac_livingroom.stop()
+        await heater_livingroom.stop()
         await fridge.stop()
         await washingmachine.stop()
         await dish_washer.stop()
