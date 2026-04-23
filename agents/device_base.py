@@ -140,11 +140,15 @@ class Device(Agent):
             float: Estimated total power in kW
         """
         my_name = self._normalize_agent_name(self.name)
-        total = self.get_power_consumption_kw()
         
-        # Get all agent names we know about
-        all_peers = set(self.peer_power_status.keys())
         with Device._class_lock:
+            # Bug Fix 2: Include own reservation in total power if we are negotiating to turn ON
+            my_reservation = Device._pending_power_reservations.get(my_name, 0.0)
+            total = max(self.get_power_consumption_kw(), my_reservation)
+            total -= self.get_provided_power_kw()
+            
+            # Get all agent names we know about
+            all_peers = set(self.peer_power_status.keys())
             all_peers.update(Device._pending_power_reservations.keys())
             
         if my_name in all_peers:
@@ -344,15 +348,16 @@ class Device(Agent):
         tx_id = uuid.uuid4().hex
         requester = self._normalize_agent_name(self.name)
 
+        # Bug Fix 1: Register power reservation BEFORE Jitter so others see our intention
+        # during their own calculation cycles even if we are still sleeping.
+        with Device._class_lock:
+            Device._pending_power_reservations[requester] = self.active_power_kw
+
         # Introduction of Jitter to break synchronization of agents starting simultaneously
         await asyncio.sleep(random.uniform(0.1, NEGOTIATION_JITTER_MAX))
 
-        # Register power reservation so concurrent negotiations see it (Bug 2: use lock)
-        with Device._class_lock:
-            Device._pending_power_reservations[requester] = self.active_power_kw
-        current_power = self.get_power_consumption_kw()
-        power_increase = max(0.0, self.active_power_kw - current_power)
-        estimated_total = self.estimate_total_power() + power_increase
+        # With Bug Fix 2, estimate_total_power() now includes our own pending reservation.
+        estimated_total = self.estimate_total_power()
         expected = {self._normalize_agent_name(peer_jid) for peer_jid in self.peers}
         slot_key = None
         if world_state is not None:
@@ -518,6 +523,8 @@ class Device(Agent):
         if commit:
             rule.negotiation_failures = 0
             self.actuate(rule.actuator_name, "on")
+            # Bug Fix 3: Broadcast power status immediately so peers see the new load
+            await self._broadcast_power_status(behaviour)
             self._push_gui_device_state()
             self._log_p2p(
                 self.name,
@@ -559,6 +566,34 @@ class Device(Agent):
         with Device._class_lock:
             Device._pending_power_reservations.pop(requester, None)
         self.pending_negotiations.pop(tx_id, None)
+
+    async def _broadcast_power_status(self, behaviour, world_state=None):
+        """Broadcast current power status to peers. Used for regular updates and immediate COMMIT notifications."""
+        if not self.peers:
+            return
+        
+        device_name = self.name.split("@")[0]
+        current_power = self.get_power_consumption_kw()
+        provided_power = self.get_provided_power_kw()
+        
+        # Use world state time or system time as fallback
+        if world_state:
+            timestamp = world_state.get("hour", 0) * 60 + world_state.get("minute", 0)
+        else:
+            timestamp = int(time.time())
+
+        for peer_jid in self.peers:
+            power_status_msg = Message(to=peer_jid)
+            power_status_msg.set_metadata("performative", "inform")
+            power_status_msg.set_metadata("ontology", "p2p")
+            power_status_msg.body = json.dumps({
+                "event": "power_status",
+                "device_name": device_name,
+                "power_kw": round(current_power, 3),
+                "provided_power_kw": round(provided_power, 3),
+                "timestamp": timestamp
+            })
+            await behaviour.send(power_status_msg)
 
     async def _apply_shedding(self, requester_name, tx_id, behaviour):
         from config import AGENTS
@@ -621,20 +656,7 @@ class Device(Agent):
                     device_name = self.agent.name.split("@")[0]
 
                     # Broadcast power status to peers (P2P communication)
-                    if self.agent.peers:
-                        current_power = self.agent.get_power_consumption_kw()
-                        for peer_jid in self.agent.peers:
-                            power_status_msg = Message(to=peer_jid)
-                            power_status_msg.set_metadata("performative", "inform")
-                            power_status_msg.set_metadata("ontology", "p2p")
-                            power_status_msg.body = json.dumps({
-                                "event": "power_status",
-                                "device_name": device_name,
-                                "power_kw": round(current_power, 3),
-                                "provided_power_kw": round(self.agent.get_provided_power_kw(), 3),
-                                "timestamp": world_state.get("hour", 0) * 60 + world_state.get("minute", 0)
-                            })
-                            await self.send(power_status_msg)
+                    await self.agent._broadcast_power_status(self, world_state)
 
                     # Notify world about hourly consumption
                     # WorldAgent uses the correct price for this time slot's cost calculation.
