@@ -13,6 +13,7 @@ AGENTS = {
     "air_fryer": f"air_fryer@{XMPP_SERVER}",
     "fridge": f"fridge@{XMPP_SERVER}",
     "ac_livingroom": f"ac.livingroom@{XMPP_SERVER}",
+    "heater_livingroom": f"heater.livingroom@{XMPP_SERVER}",
     "washing_machine": f"washing_machine@{XMPP_SERVER}",
     "dish_washer": f"dish_washer@{XMPP_SERVER}",
 }
@@ -44,6 +45,14 @@ AC_PRICE_SENSITIVITY = 0
 AC_ACTIVE_POWER_KW = 1.35
 AC_IDLE_POWER_KW = 0.0
 AC_PRIORITY_THRESHOLDS = [8, 6, 4, 2] # Deviation thresholds for priority 5, 4, 3, 2
+
+# Heater
+HEATER_TARGET_TEMP = 21
+HEATER_TEMP_MARGIN = 2
+HEATER_PRICE_SENSITIVITY = 0
+HEATER_ACTIVE_POWER_KW = 1.35
+HEATER_IDLE_POWER_KW = 0.0
+HEATER_PRIORITY_THRESHOLDS = [8, 6, 4, 2] # Cold deviation thresholds for priority 5, 4, 3, 2
 
 # Air Fryer
 AIR_FRYER_ACTIVE_POWER_KW = 1.4

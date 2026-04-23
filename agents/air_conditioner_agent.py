@@ -71,8 +71,8 @@ class AirConditioner(Device):
             Rule(
                 name="AC Off - Cool Enough",
                 sensor_name="temperature",
-                operator="<",
-                threshold=target_temp - temp_margin,
+                operator="<=",
+                threshold=target_temp,
                 actuator_name="ac_switch",
                 command="off",
             )
@@ -103,10 +103,12 @@ class AirConditioner(Device):
         if self.current_temp is None:
             return 3  # Default medium priority if no temp data
 
-        temp_deviation = abs(self.current_temp - self.target_temp)
+        temp_deviation = self.current_temp - self.target_temp
+        if temp_deviation < 0:
+            raw_priority = 0
 
         # Extreme discomfort - health/safety concern
-        if temp_deviation >= AC_PRIORITY_THRESHOLDS[0]:
+        elif temp_deviation >= AC_PRIORITY_THRESHOLDS[0]:
             raw_priority = 5
 
         # High discomfort - very uncomfortable

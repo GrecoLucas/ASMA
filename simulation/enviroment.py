@@ -234,6 +234,11 @@ class WorldAgent(Agent):
             # AC cools the environment gradually, reduced to step scale
             self.current_temperature -= 0.8 * (MINUTES_PER_STEP / 60.0)
 
+        # Heater warming effect
+        if self.active_devices.get("heater.livingroom") == "ON":
+            # Heater warms the environment gradually, reduced to step scale
+            self.current_temperature += 0.8 * (MINUTES_PER_STEP / 60.0)
+
         # Fridge cooling effect (minor, mostly contained)
         if self.active_devices.get("fridge") == "ON":
             self.current_temperature += 0.1 * (MINUTES_PER_STEP / 60.0)
