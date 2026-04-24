@@ -1,5 +1,10 @@
 from .device_base import Device, Rule
+from config import (
+    AIR_FRYER_ACTIVE_POWER_KW, AIR_FRYER_IDLE_POWER_KW, AIR_FRYER_PRIORITY,
+    AIR_FRYER_CHANCE_PER_HOUR, AIR_FRYER_CYCLE_DURATION_MINUTES
+)
 import json
+import random
 
 class CookingSensorComponent:
     def __init__(self):
@@ -25,13 +30,13 @@ class SwitchComponent:
         return "Invalid command"
 
 class AirFryerAgent(Device):
-    """Air Fryer agent that runs for 1 hour every day between 15:00 and 18:00."""
+    """Air Fryer agent that has a random chance to start a cooking cycle each hour."""
 
     def __init__(self, jid, password, peers=None):
         super().__init__(jid, password, device_type="air_fryer", peers=peers)
-        self.active_power_kw = 1.4
-        self.idle_power_kw = 0.0
-        self.current_priority = 5
+        self.active_power_kw = AIR_FRYER_ACTIVE_POWER_KW
+        self.idle_power_kw = AIR_FRYER_IDLE_POWER_KW
+        self.current_priority = AIR_FRYER_PRIORITY
         self.cycle_minutes_remaining = 0
         self.last_day_run = -1
 
@@ -61,18 +66,15 @@ class AirFryerAgent(Device):
         )
 
     def calculate_priority(self, world_state=None):
-        return 5
+        return AIR_FRYER_PRIORITY
 
     def update_sensors(self, world_state):
         from config import MINUTES_PER_STEP
-        hour = world_state.get("hour", 0)
-        day = world_state.get("day", 1)
-
-        # Trigger logic: Start at 15:00 if not yet run today
-        # (Using >= 15 as starting window)
-        if 15 <= hour < 18 and day != self.last_day_run and self.cycle_minutes_remaining == 0:
-            self.cycle_minutes_remaining = 120
-            self.last_day_run = day
+        
+        # Trigger logic: Every hour (step), check for a random chance to start if idle
+        if self.cycle_minutes_remaining == 0:
+            if random.random() < AIR_FRYER_CHANCE_PER_HOUR:
+                self.cycle_minutes_remaining = AIR_FRYER_CYCLE_DURATION_MINUTES
 
         # Timer logic: Subtract the actual simulated minutes passed
         if self.status == "on" and self.cycle_minutes_remaining > 0:
@@ -89,7 +91,7 @@ class AirFryerAgent(Device):
     def get_device_state_for_gui(self):
         return {
             "device_type": "air_fryer",
-            "priority": 5,
+            "priority": AIR_FRYER_PRIORITY,
             "status": self.status.upper(),
             "cycle_minutes_remaining": self.cycle_minutes_remaining,
             "power_kw": round(self.get_power_consumption_kw(), 3),

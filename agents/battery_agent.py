@@ -1,17 +1,20 @@
 import json
 from spade.message import Message
 from agents.device_base import Device
-from config import MINUTES_PER_STEP
 from spade.template import Template
-from config import AGENTS
-        
+from config import (
+    MINUTES_PER_STEP, BATTERY_CAPACITY_KWH, BATTERY_MAX_POWER_KW,
+    BATTERY_INITIAL_CHARGE_PERCENT, BATTERY_SOLAR_CHARGE_START_HOUR,
+    BATTERY_SOLAR_CHARGE_END_HOUR, BATTERY_DISCHARGE_START_HOUR,
+    BATTERY_DISCHARGE_END_HOUR, BATTERY_PRIORITY
+)
 
 class BatteryAgent(Device):
-    def __init__(self, jid, password, capacity_kwh=20.0, max_power_kw=20.0, peers=None):
+    def __init__(self, jid, password, capacity_kwh=BATTERY_CAPACITY_KWH, max_power_kw=BATTERY_MAX_POWER_KW, peers=None):
         super().__init__(jid, password, device_type="battery", peers=peers)
         self.capacity_kwh = capacity_kwh
         self.max_power_kw = max_power_kw
-        self.charge_kwh = capacity_kwh / 2.0  # Começa com 50%
+        self.charge_kwh = capacity_kwh * BATTERY_INITIAL_CHARGE_PERCENT
         self.current_discharge_kw = 0.0
         self.current_charge_kw = 0.0
         self.current_hour = 0
@@ -74,7 +77,7 @@ class BatteryAgent(Device):
             "power_kw": round(self.current_charge_kw, 3), # Grid draw (0.0)
             "solar_charge_kw": round(solar_charging, 3),  # Solar draw
             "provided_power_kw": round(self.current_discharge_kw, 3),
-            "priority": -100,
+            "priority": BATTERY_PRIORITY,
         }
 
     class BatteryP2P(Device.PeerCommunicationBehaviour):

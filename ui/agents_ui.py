@@ -72,6 +72,22 @@ class DevicesPanel:
             info["comfort"] = ttk.Label(device_frame, text="Comfort: ----", style="Info.TLabel")
             info["comfort"].pack(anchor=tk.W, pady=2)
 
+        elif device_type == "heater":
+            info["priority"] = ttk.Label(device_frame, text="Priority: --", style="Info.TLabel")
+            info["priority"].pack(anchor=tk.W, pady=2)
+            info["status"] = ttk.Label(device_frame, text="Status: --", style="Heading.TLabel")
+            info["status"].pack(anchor=tk.W, pady=2)
+            info["temp"] = ttk.Label(device_frame, text="Current Temp: -- °C", style="Heading.TLabel")
+            info["temp"].pack(anchor=tk.W, pady=2)
+            info["target"] = ttk.Label(device_frame, text="Target Temp: -- °C", style="Heading.TLabel")
+            info["target"].pack(anchor=tk.W, pady=2)
+            info["power"] = ttk.Label(device_frame, text="Power: -- kW", style="Heading.TLabel")
+            info["power"].pack(anchor=tk.W, pady=2)
+            info["consumption"] = ttk.Label(device_frame, text="Hourly: -- kWh | Daily: -- kWh", style="Info.TLabel")
+            info["consumption"].pack(anchor=tk.W, pady=2)
+            info["comfort"] = ttk.Label(device_frame, text="Comfort: ----", style="Info.TLabel")
+            info["comfort"].pack(anchor=tk.W, pady=2)
+
         elif device_type == "refrigerator":
             info["priority"] = ttk.Label(device_frame, text="Priority: --", style="Info.TLabel")
             info["priority"].pack(anchor=tk.W, pady=2)
@@ -225,6 +241,31 @@ class DevicesPanel:
                 elif not is_on and device_info['animating']:
                     device_info['animation_label'].config(image='')
                     device_info['animating'] = False
+
+            elif device_info["type"] == "heater":
+                status = device_state.get("heater_status", "Unknown")
+                current_temp = device_state.get("current_temp") or 0.0
+                target_temp = device_state.get("target_temp") or 0.0
+                temp_margin = device_state.get("temp_margin") or 0.0
+                power_kw = device_state.get("power_kw") or 0.0
+                max_power_kw = device_state.get("max_power_kw") or 0.0
+                hourly_consumption_kwh = device_state.get("hourly_consumption_kwh") or 0.0
+                daily_consumption_kwh = device_state.get("daily_consumption_kwh") or 0.0
+                priority = device_state.get("priority", "-")
+
+                device_info["labels"]["priority"].config(text=f"Priority: {priority}")
+                if status == 'ON':
+                    status_text, status_color = "Status: ON", "#00ff88"
+                else:
+                    status_text, status_color = "Status: OFF", "#ff3333"
+                device_info["labels"]["status"].config(text=status_text, foreground=status_color)
+                device_info["labels"]["temp"].config(text=f"Current Temp: {current_temp:.1f} °C")
+                device_info["labels"]["target"].config(text=f"Target Temp: {target_temp:.1f} °C ±{temp_margin:.1f}°C")
+                device_info["labels"]["power"].config(text=f"Power: {power_kw:.2f} kW / {max_power_kw:.2f} kW")
+                device_info["labels"]["consumption"].config(text=f"Hourly: {hourly_consumption_kwh:.3f} kWh | Daily: {daily_consumption_kwh:.3f} kWh")
+                comfort = "✅ Comfortable" if target_temp - temp_margin <= current_temp <= target_temp + temp_margin else "❌ Outside range"
+                device_info["labels"]["comfort"].config(text=f"Comfort: {comfort}")
+                is_on = status == 'ON'
 
             elif device_info["type"] == "refrigerator":
                 status = device_state.get("compressor_status", "Unknown")
