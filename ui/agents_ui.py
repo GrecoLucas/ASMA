@@ -32,7 +32,8 @@ class DevicesPanel:
         try:
             cog_image = Image.open('ui/cog.gif')
             while True:
-                self.cog_frames.append(ImageTk.PhotoImage(cog_image))
+                frame = cog_image.convert('RGBA').resize((40, 40), Image.LANCZOS)
+                self.cog_frames.append(ImageTk.PhotoImage(frame))
                 cog_image.seek(cog_image.tell() + 1)
         except EOFError:
             pass
@@ -158,8 +159,8 @@ class DevicesPanel:
             info["rate"] = ttk.Label(device_frame, text="Max Discharge / Charge Rate: -- kW", style="Info.TLabel")
             info["rate"].pack(anchor=tk.W, pady=2)
 
-        animation_label = ttk.Label(device_frame)
-        animation_label.pack(anchor=tk.W, pady=2)
+        animation_label = tk.Label(device_frame, bg='#1e1e1e', bd=0, highlightthickness=0)
+        animation_label.place(relx=1.0, rely=0.0, anchor='ne', x=-5, y=0)
 
         self.device_frames[device_name] = {
             "frame": device_frame,
@@ -236,8 +237,8 @@ class DevicesPanel:
 
                 is_on = status == 'ON'
                 if is_on and not device_info['animating']:
-                    self.start_animation(device_info['animation_label'], device_name)
                     device_info['animating'] = True
+                    self.start_animation(device_info['animation_label'], device_name)
                 elif not is_on and device_info['animating']:
                     device_info['animation_label'].config(image='')
                     device_info['animating'] = False
@@ -305,8 +306,8 @@ class DevicesPanel:
 
                 is_on = status == 'RUNNING'
                 if is_on and not device_info['animating']:
-                    self.start_animation(device_info['animation_label'], device_name)
                     device_info['animating'] = True
+                    self.start_animation(device_info['animation_label'], device_name)
                 elif not is_on and device_info['animating']:
                     device_info['animation_label'].config(image='')
                     device_info['animating'] = False
@@ -347,8 +348,8 @@ class DevicesPanel:
 
                 is_on = motor_status == 'WASHING'
                 if is_on and not device_info['animating']:
-                    self.start_animation(device_info['animation_label'], device_name)
                     device_info['animating'] = True
+                    self.start_animation(device_info['animation_label'], device_name)
                 elif not is_on and device_info['animating']:
                     device_info['animation_label'].config(image='')
                     device_info['animating'] = False
@@ -390,8 +391,8 @@ class DevicesPanel:
 
                 is_on = motor_status == 'WASHING'
                 if is_on and not device_info['animating']:
-                    self.start_animation(device_info['animation_label'], device_name)
                     device_info['animating'] = True
+                    self.start_animation(device_info['animation_label'], device_name)
                 elif not is_on and device_info['animating']:
                     device_info['animation_label'].config(image='')
                     device_info['animating'] = False
@@ -426,11 +427,7 @@ class DevicesPanel:
                 device_info["labels"]["charge"].config(text=f"Charge: {charge:.2f} / {capacity:.2f} kWh ({pct:.0f}%)")
                 device_info["labels"]["rate"].config(text=f"Max Discharge / Charge Rate: {max_power_kw:.2f} kW")
 
-                is_on = 'CHARGING' in status or 'DISCHARGING' in status
-                if is_on and not device_info['animating']:
-                    self.start_animation(device_info['animation_label'], device_name)
-                    device_info['animating'] = True
-                elif not is_on and device_info['animating']:
-                    device_info['animation_label'].config(image='')
-                    device_info['animating'] = False
+                # No Animation for battery, but we could consider a different visual indicator if desired
+                device_info['animation_label'].config(image='')
+                device_info['animating'] = False
 
