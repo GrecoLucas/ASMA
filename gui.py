@@ -4,6 +4,7 @@ import json
 from threading import Lock
 from ui.log_ui import LogPanel
 from ui.agents_ui import DevicesPanel
+from ui.graphs_ui import GraphsPanel
 
 class SimulationState:
     """Thread-safe storage for simulation state."""
@@ -148,8 +149,19 @@ class SimulationGUI:
         # Devices Panel
         self.devices_panel = DevicesPanel(left_frame)
         
-        # Logs Panel
-        self.log_panel = LogPanel(right_frame)
+        # Right Notebook
+        self.right_notebook = ttk.Notebook(right_frame)
+        self.right_notebook.pack(fill=tk.BOTH, expand=True)
+
+        # Logs Tab
+        tab_logs = ttk.Frame(self.right_notebook)
+        self.right_notebook.add(tab_logs, text="Negotiations Log")
+        self.log_panel = LogPanel(tab_logs)
+
+        # Graphs Tab
+        tab_graphs = ttk.Frame(self.right_notebook)
+        self.right_notebook.add(tab_graphs, text="Graph Statistics")
+        self.graphs_panel = GraphsPanel(tab_graphs)
 
     def toggle_pause(self):
         now_paused = self.state.toggle_pause()
@@ -297,6 +309,10 @@ class SimulationGUI:
         messages = self.state.get_messages()
         if hasattr(self, 'log_panel'):
             self.log_panel.update_logs(messages)
+
+        # Update graphs
+        if hasattr(self, 'graphs_panel'):
+            self.graphs_panel.update_data(world, grid_drawn, dynamic_limit, battery_extra)
 
         # Schedule next update
         self.root.after(1000, self.update_display)
