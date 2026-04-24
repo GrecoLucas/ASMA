@@ -146,6 +146,22 @@ class DevicesPanel:
             info["consumption"] = ttk.Label(device_frame, text="Hourly: -- kWh | Daily: -- kWh", style="Info.TLabel")
             info["consumption"].pack(anchor=tk.W, pady=2)
 
+        elif device_type == "air_fryer":
+            info["priority"] = ttk.Label(device_frame, text="Priority: --", style="Info.TLabel")
+            info["priority"].pack(anchor=tk.W, pady=2)
+
+            info["status"] = ttk.Label(device_frame, text="Status: --", style="Heading.TLabel")
+            info["status"].pack(anchor=tk.W, pady=2)
+
+            info["cycle"] = ttk.Label(device_frame, text="Cycle Remaining: -- min", style="Heading.TLabel")
+            info["cycle"].pack(anchor=tk.W, pady=2)
+
+            info["power"] = ttk.Label(device_frame, text="Power: -- kW", style="Heading.TLabel")
+            info["power"].pack(anchor=tk.W, pady=2)
+
+            info["consumption"] = ttk.Label(device_frame, text="Hourly: -- kWh | Daily: -- kWh", style="Info.TLabel")
+            info["consumption"].pack(anchor=tk.W, pady=2)
+
         elif device_type == "battery":
             info["status"] = ttk.Label(device_frame, text="Status: --", style="Heading.TLabel")
             info["status"].pack(anchor=tk.W, pady=2)
@@ -172,6 +188,8 @@ class DevicesPanel:
         }
 
     def start_animation(self, label, device_name):
+        if not self.cog_frames:
+            return
         def animate(frame=0):
             if self.device_frames[device_name]['animating']:
                 photo = self.cog_frames[frame]
@@ -390,6 +408,39 @@ class DevicesPanel:
                 )
 
                 is_on = motor_status == 'WASHING'
+                if is_on and not device_info['animating']:
+                    device_info['animating'] = True
+                    self.start_animation(device_info['animation_label'], device_name)
+                elif not is_on and device_info['animating']:
+                    device_info['animation_label'].config(image='')
+                    device_info['animating'] = False
+
+            elif device_info["type"] == "air_fryer":
+                status = device_state.get("status", "IDLE")
+                cycle_minutes_remaining = device_state.get("cycle_minutes_remaining", 0)
+                power_kw = device_state.get("power_kw", 0.0)
+                max_power_kw = device_state.get("max_power_kw", 0.0)
+                hourly_consumption_kwh = device_state.get("hourly_consumption_kwh", 0.0)
+                daily_consumption_kwh = device_state.get("daily_consumption_kwh", 0.0)
+                priority = device_state.get("priority", "-")
+
+                device_info["labels"]["priority"].config(text=f"Priority: {priority}")
+
+                if status == 'ON':
+                    status_text = "Status: ON"
+                    status_color = "#00ff88"
+                else:
+                    status_text = "Status: OFF"
+                    status_color = "#ff3333"
+
+                device_info["labels"]["status"].config(text=status_text, foreground=status_color)
+                device_info["labels"]["cycle"].config(text=f"Cycle Remaining: {cycle_minutes_remaining} min")
+                device_info["labels"]["power"].config(text=f"Power: {power_kw:.2f} kW / {max_power_kw:.2f} kW")
+                device_info["labels"]["consumption"].config(
+                    text=f"Hourly: {hourly_consumption_kwh:.3f} kWh | Daily: {daily_consumption_kwh:.3f} kWh"
+                )
+
+                is_on = status == 'ON'
                 if is_on and not device_info['animating']:
                     device_info['animating'] = True
                     self.start_animation(device_info['animation_label'], device_name)
