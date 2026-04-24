@@ -1,82 +1,124 @@
 import json
-from .device_base import Device
+from spade.message import Message
+from agents.device_base import Device
+from spade.template import Template
+from config import (
+    MINUTES_PER_STEP, BATTERY_CAPACITY_KWH, BATTERY_MAX_POWER_KW,
+    BATTERY_INITIAL_CHARGE_PERCENT, BATTERY_SOLAR_CHARGE_START_HOUR,
+    BATTERY_SOLAR_CHARGE_END_HOUR, BATTERY_DISCHARGE_START_HOUR,
+    BATTERY_DISCHARGE_END_HOUR, BATTERY_PRIORITY
+)
 
 class BatteryAgent(Device):
-    """
-    Battery Agent with integrated Solar logic.
-    Stores energy from solar panels directly. Agents use energy from the battery.
-    Can charge and discharge simultaneously.
-    """
-
-    def __init__(self, jid, password, capacity_kwh=5.0, max_rate_kw=2.0, price_threshold=0.15, peers=None):
+    def __init__(self, jid, password, capacity_kwh=BATTERY_CAPACITY_KWH, max_power_kw=BATTERY_MAX_POWER_KW, peers=None):
         super().__init__(jid, password, device_type="battery", peers=peers)
         self.capacity_kwh = capacity_kwh
-        self.current_charge_kwh = 0.0  # Starts empty
-        self.max_rate_kw = max_rate_kw
-        self.price_threshold = price_threshold  # Kept for signature compatibility
-        self.current_power_kw = 0.0
-        self.battery_flow_kw = 0.0
-        self.current_priority = 5
-
-    def calculate_priority(self, world_state=None):
-        return 5
+        self.max_power_kw = max_power_kw
+        self.charge_kwh = capacity_kwh * BATTERY_INITIAL_CHARGE_PERCENT
+        self.current_discharge_kw = 0.0
+        self.current_charge_kw = 0.0
+        self.current_hour = 0
 
     def update_sensors(self, world_state):
-        from config import MINUTES_PER_STEP
-        if not world_state:
-            return
-
-        solar_production = world_state.get("solar_production", 0.0)
-
-        # Calculate house consumption from peers (positive power only)
-        house_consumption_kw = sum(data.get("power_kw", 0.0) for data in self.peer_power_status.values() if data.get("power_kw", 0.0) > 0)
-
-        # Determine battery limits
-        step_hours = MINUTES_PER_STEP / 60.0
-        max_possible_charge = (self.capacity_kwh - self.current_charge_kwh) / step_hours
-        max_possible_discharge = self.current_charge_kwh / step_hours
-
-        # 1. Energia solar deve ser armazenada na bateria (Charge from solar)
-        charging_from_solar = min(self.max_rate_kw, max_possible_charge, solar_production)
-
-        # 2. Agentes usam energia da bateria (Discharge to house)
-        # Bateria deveria dar para carregar e utilizar ao mesmo tempo
-        effective_discharge_limit = min(self.max_rate_kw, max_possible_discharge + charging_from_solar)
-        discharging_to_house = min(effective_discharge_limit, house_consumption_kw)
-        
-        # Calculate battery net internal flow
-        self.battery_flow_kw = charging_from_solar - discharging_to_house
-
-        # Calculate total grid power exchange for this agent
-        self.current_power_kw = charging_from_solar - discharging_to_house - solar_production
-
-        # Update status based on battery exact flow
-        if charging_from_solar > 0.01 and discharging_to_house > 0.01:
-            self.status = "CHARGING & DISCHARGING"
-        elif charging_from_solar > 0.01:
-            self.status = "CHARGING"
-        elif discharging_to_house > 0.01:
-            self.status = "DISCHARGING"
-        else:
-            self.status = "FULL" if self.current_charge_kwh >= self.capacity_kwh - 0.01 else "IDLE"
-
-    def update_energy_counters(self, world_state):
-        # Update daily/hourly stats normally (uses self.current_power_kw for grid consumption logic)
-        super().update_energy_counters(world_state)
-        
-        # Update internal battery state based on internal flow, not grid power
-        from config import MINUTES_PER_STEP
-        step_hours = MINUTES_PER_STEP / 60.0
-        self.current_charge_kwh += self.battery_flow_kw * step_hours
-        self.current_charge_kwh = max(0.0, min(self.capacity_kwh, self.current_charge_kwh))
+       self.current_hour = world_state.get("hour", 0)
+       self.solar_production = world_state.get("solar_production", 0.0) # Captura o sol
 
     def get_power_consumption_kw(self):
-        return self.current_power_kw
+        # Se a bateria extrai do painel solar, isso conta como "consumo" do ponto de vista do World. 
+        # (O World injecta o Solar_Production total, então a bateria precisa "consumir" essa parcela).
+        # E se a bateria está a descarregar, ela "produz" energia para o World.
+        return getattr(self, "solar_to_battery", 0.0) - self.current_discharge_kw
+
+    def get_provided_power_kw(self):
+        return self.current_discharge_kw
+
+    def update_energy_counters(self, world_state):
+        self.current_charge_kw = 0.0 # Nunca carrega da rede (Grid = 0)
+        self.current_discharge_kw = 0.0
+
+        # Calculate total demand from other devices
+        total_demand_kw = sum(p.get("power_kw", 0.0) for p in self.peer_power_status.values())
+
+        # 1. Carregamento Solar (Only use excess solar)
+        excess_solar_kw = max(0.0, self.solar_production - total_demand_kw)
+        
+        available_capacity_kwh = self.capacity_kwh - self.charge_kwh
+        max_charge_power_kw = min(self.max_power_kw, available_capacity_kwh * (60.0 / MINUTES_PER_STEP))
+        
+        self.solar_to_battery = min(excess_solar_kw, max_charge_power_kw)
+
+        # 2. Descarga baseada na demanda dos agentes
+        available_kw = (self.charge_kwh * 60) / MINUTES_PER_STEP
+        
+        unmet_demand_kw = max(0.0, total_demand_kw - self.solar_production)
+        
+        if self.charge_kwh > 0 and unmet_demand_kw > 0.0:
+            desired_discharge = min(unmet_demand_kw, self.max_power_kw)
+            self.current_discharge_kw = min(desired_discharge, available_kw)
+        else:
+            self.current_discharge_kw = 0.0
+
+        # Atualização física da carga
+        net_flow = self.solar_to_battery - self.current_discharge_kw
+        self.charge_kwh += net_flow * (MINUTES_PER_STEP / 60.0)
+        self.charge_kwh = max(0.0, min(self.capacity_kwh, self.charge_kwh))
+
+        super().update_energy_counters(world_state)
 
     def get_device_state_for_gui(self):
-        state = super().get_device_state_for_gui()
-        state["charge_kwh"] = round(self.current_charge_kwh, 2)
-        state["capacity_kwh"] = round(self.capacity_kwh, 2)
-        state["charge_percent"] = round((self.current_charge_kwh / self.capacity_kwh) * 100, 1)
-        state["battery_flow_kw"] = round(self.battery_flow_kw, 3)
-        return state
+        solar_charging = getattr(self, "solar_to_battery", 0.0)
+        return {
+            "device_type": "battery",
+            "battery_level": round((self.charge_kwh / self.capacity_kwh) * 100, 1),
+            "capacity_kwh": self.capacity_kwh,
+            "charge_kwh": round(self.charge_kwh, 3),
+            "max_power_kw": self.max_power_kw,
+            "status": "CHARGING with solar panels" if solar_charging > 0 else ("DISCHARGING" if self.current_discharge_kw > 0 else "IDLE"),
+            "power_kw": round(self.current_charge_kw, 3), # Grid draw (0.0)
+            "solar_charge_kw": round(solar_charging, 3),  # Solar draw
+            "provided_power_kw": round(self.current_discharge_kw, 3),
+            "priority": BATTERY_PRIORITY,
+        }
+
+    class BatteryP2P(Device.PeerCommunicationBehaviour):
+        """Rotina P2P da bateria: armazena consumption dos peers e responde a requests com capacidade disponivel."""
+        async def run(self):
+            msg = await self.receive(timeout=10)
+            if msg:
+                try:
+                    data = json.loads(msg.body)
+                    if data.get("event") == "power_status":
+                        device_name = data.get("device_name")
+                        self.agent.peer_power_status[device_name] = {
+                            "power_kw": data.get("power_kw", 0),
+                            "timestamp": data.get("timestamp", 0)
+                        }
+                    elif data.get("event") == "power_request":
+                        available_kw = (self.agent.charge_kwh * 60) / MINUTES_PER_STEP
+                        can_provide = min(self.agent.max_power_kw, available_kw)
+                        
+                        reply = Message(to=str(msg.sender).split("/", 1)[0])
+                        reply.set_metadata("ontology", "p2p")
+                        reply.body = json.dumps({
+                            "event": "power_reply",
+                            "transaction_id": data.get("transaction_id"),
+                            "decision": "accept",
+                            "provided_power_kw": round(can_provide, 3),
+                            "responder_priority": -100
+                        })
+                        await self.send(reply)
+                except Exception as e:
+                    import logging
+                    logging.warning(f"[BatteryP2P] Error: {e}")
+
+    async def setup(self):
+        # Call base setup to initialize peer status and standard behaviors
+        await super().setup()
+
+        # Overwrite/Add specific battery behaviors
+        # Note: MonitorEnvironment is already added by super().setup() with world_template
+        
+        # We add the specific BatteryP2P behavior for battery-specific logic
+        t_p2p = Template()
+        t_p2p.metadata = {"ontology": "p2p"}
+        self.add_behaviour(self.BatteryP2P(), t_p2p)

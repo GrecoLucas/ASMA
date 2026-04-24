@@ -1,4 +1,9 @@
 from .device_base import Device, Rule
+from config import (
+    FRIDGE_TARGET_TEMP, FRIDGE_TEMP_MARGIN, FRIDGE_ACTIVE_POWER_KW,
+    FRIDGE_IDLE_POWER_KW, FRIDGE_PRIORITY, FRIDGE_COOLING_COEFFICIENT,
+    FRIDGE_TEMP_UPDATE_RATE_ON, FRIDGE_TEMP_UPDATE_RATE_OFF
+)
 
 
 class RefrigeratorSensorComponent:
@@ -36,7 +41,7 @@ class RefrigeratorCompressor:
 class Refrigerator(Device):
     """Refrigerator device agent that maintains cold temperature using rules."""
 
-    def __init__(self, jid, password, target_temp=4, temp_margin=1, peers=None):
+    def __init__(self, jid, password, target_temp=FRIDGE_TARGET_TEMP, temp_margin=FRIDGE_TEMP_MARGIN, peers=None):
         super().__init__(jid, password, device_type="refrigerator", peers=peers)
         self.target_temp = target_temp
         self.temp_margin = temp_margin
@@ -47,8 +52,8 @@ class Refrigerator(Device):
         self.add_actuator("compressor", RefrigeratorCompressor())
 
         # Typical compressor profile
-        self.active_power_kw = 0.18
-        self.idle_power_kw = 0.03
+        self.active_power_kw = FRIDGE_ACTIVE_POWER_KW
+        self.idle_power_kw = FRIDGE_IDLE_POWER_KW
 
         self.add_rule(
             Rule(
@@ -79,11 +84,15 @@ class Refrigerator(Device):
         if ambient_temp is not None:
             compressor = self.actuators["compressor"]
             if compressor.is_running:
-                self.current_temp = self.target_temp + (ambient_temp - 20) * 0.1
+                cooled_target = self.target_temp + (ambient_temp - 20) * FRIDGE_COOLING_COEFFICIENT
+                if self.current_temp is None:
+                    self.current_temp = cooled_target
+                else:
+                    self.current_temp += (cooled_target - self.current_temp) * FRIDGE_TEMP_UPDATE_RATE_ON
             else:
                 if self.current_temp is None:
                     self.current_temp = self.target_temp
-                self.current_temp += (ambient_temp - self.current_temp) * 0.05
+                self.current_temp += (ambient_temp - self.current_temp) * FRIDGE_TEMP_UPDATE_RATE_OFF
 
             self.sensors["temperature"].update(round(self.current_temp, 1))
 
@@ -94,9 +103,9 @@ class Refrigerator(Device):
         - Fridge always returns 5 (highest priority, never yields to other devices)
 
         Returns:
-            int: Priority value 5 (constant)
+            int: Priority value (from config)
         """
-        return 5
+        return FRIDGE_PRIORITY
 
     def get_power_consumption_kw(self):
         compressor = self.actuators["compressor"]

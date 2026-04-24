@@ -56,17 +56,6 @@ Em conflitos de potência, dispositivos com prioridade numérica menor podem ser
   - muita roupa acumulada -> prioridade alta (`4`)
   - carga crítica/acúmulo prolongado -> prioridade muito alta (`5`)
 
-### 2.4 Bateria (BatteryAgent)
-
-- **Papel:** armazenamento e mitigação das contas de luz dinâmicas.
-- **Restrições:** Capacidade máxima definida (ex: `5.0 kWh`). Taxa de transferência máxima `2.0 kW`.
-- **Regras de atuação (Em Cascata):**
-  - `Charge`: Carrega energia consumindo os excedentes gerados (P2P Net Power < 0).
-  - `Discharge`: Descarrega ativamente ajudando a alimentar as cargas se o custo momentâneo (`energy_price`) for superior ao limite configurado (ex: `>= 0.15€/kWh`).
-- **Prioridade:** fixa em `5`.
-
----
-
 ## 3. Comunicação P2P Correta (Implementada)
 
 Quando um dispositivo precisa ligar e existe configuração com peers, a ligação passa por negociação distribuída.
@@ -121,15 +110,17 @@ O solicitante fecha a transação quando:
 
 Regra de fecho:
 
-- **COMMIT**: sem rejeições, com respostas recebidas e sem timeout.
-- **ABORT**: qualquer rejeição ou timeout.
+- **COMMIT**: existe pelo menos uma resposta `accept` e:
+  - se `projected_total_kw <= max_power_kw`, não precisa shedding adicional; ou
+  - se excede o limite, existe um conjunto de peers aceitos cujo shedding cobre o excesso, escolhendo primeiro o menor número de dispositivos possível; em empate, prefere o conjunto com prioridades mais baixas.
+- **ABORT**: sem `accept`, timeout sem capacidade suficiente, ou capacidade de shedding aceita insuficiente.
 
 No **COMMIT**, o solicitante liga o atuador e notifica o mundo com `state_changed = ON`.
 No **ABORT**, a regra de `on` é liberada para tentar novamente em ciclo futuro.
 
 ### 3.5. Load Shedding após COMMIT
 
-Peers que haviam aceitado com `should_shed = True` aplicam shedding ao receber `power_commit`:
+Peers que foram selecionados explicitamente pelo solicitante (lista `shed_peers`) aplicam shedding ao receber `power_commit`:
 
 - definem `shed_timeout = 3` ciclos
 - executam regras de `off`
@@ -150,6 +141,5 @@ Peers que haviam aceitado com `should_shed = True` aplicam shedding ao receber `
 - A geladeira permanece estruturalmente prioritária (`5`).
 - O ar condicionado adapta prioridade conforme desconforto térmico.
 - A máquina de lavar eleva prioridade conforme o tempo passa e a roupa acumula.
-- A bateria é uma inteligência financeira e elétrica (com lógica solar integrada): carrega a partir da energia solar produzida e descarrega para alimentar os consumos da casa, mitigando os custos de eletricidade (`energy_price`).
 - A decisão de ligar em modo distribuído depende de consenso P2P contínuo.
 - Em sobrecarga, dispositivos menos prioritários cedem carga quando possível.

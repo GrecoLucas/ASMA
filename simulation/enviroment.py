@@ -1,6 +1,7 @@
 import json
 import math
 import random
+import logging
 from spade.agent import Agent
 from spade.behaviour import CyclicBehaviour, PeriodicBehaviour
 from spade.message import Message
@@ -11,7 +12,7 @@ try:
     from gui import get_simulation_state
     GUI_AVAILABLE = True
 except ImportError:
-    GUI_AVAILABLE = False 
+    GUI_AVAILABLE = False
 
 class WorldAgent(Agent):
     def __init__(self, jid, password, season="summer", receivers=None):
@@ -27,7 +28,11 @@ class WorldAgent(Agent):
         self.last_hour_consumption_kwh = 0.0
         self.total_daily_cost_euro = 0.0
         self.total_daily_renewable_kwh = 0.0
+        self.total_daily_solar_generated_kwh = 0.0
         self.last_world_state = {}
+
+        # Bug 12 fix: initialize _renewable_per_slot in __init__ instead of lazy hasattr
+        self._renewable_per_slot = {}
 
         # Base parameters for different seasons
         self.season_params = {
@@ -48,12 +53,20 @@ class WorldAgent(Agent):
         self.total_daily_consumption_kwh = 0.0
         self.total_daily_cost_euro = 0.0
         self.total_daily_renewable_kwh = 0.0
+        self.total_daily_solar_generated_kwh = 0.0
         self.last_hour_consumption_kwh = 0.0
-        if hasattr(self, '_renewable_per_slot'):
-            self._renewable_per_slot.clear()
+        # Bug 12 fix: _renewable_per_slot is now always initialized, just clear it
+        self._renewable_per_slot.clear()
+        if hasattr(self, '_solar_per_slot'):
+            self._solar_per_slot.clear()
 
-    def register_device_consumption(self, device_name, day, hour, minute, consumption_kwh):
-        """Register step consumption from a device, de-duplicated by (day, hour, minute, device)."""
+    def register_device_consumption(self, device_name, day, hour, minute, consumption_kwh, energy_price=None):
+        """Register step consumption from a device, de-duplicated by (day, hour, minute, device).
+
+        Bug 7 fix: energy_price is now passed in from the device's own world_state snapshot,
+        ensuring the correct price for this time slot is used instead of last_world_state's
+        potentially stale price.
+        """
         if day != self.day_count:
             return
 
@@ -64,58 +77,122 @@ class WorldAgent(Agent):
             return
 
         slot_data[device_name] = consumption_kwh
-        self.device_daily_consumption_kwh[device_name] = (
-            self.device_daily_consumption_kwh.get(device_name, 0.0) + consumption_kwh
-        )
-        self.total_daily_consumption_kwh += consumption_kwh
-
-        self.last_hour_consumption_kwh = round(sum(slot_data.values()), 3)
         
-        # Calculate renewable energy used after all devices in this slot are registered
-        self._calculate_renewable_usage_for_slot(slot_key)
+        # Only add actual device consumption to the total (ignore renewable generation like solar or battery discharge)
+        if consumption_kwh > 0 and device_name != "battery":
+            self.device_daily_consumption_kwh[device_name] = (
+                self.device_daily_consumption_kwh.get(device_name, 0.0) + consumption_kwh
+            )
+            self.total_daily_consumption_kwh += consumption_kwh
 
-    def _calculate_renewable_usage_for_slot(self, slot_key):
+        # Bug 7 & 15 fix: we will calculate cost correctly in _calculate_renewable_usage_for_slot
+        # to ensure renewable/battery offset is accounted for before charging the user.
+        if consumption_kwh > 0:
+            if energy_price is not None:
+                pass # Price logic moved below
+            elif self.last_world_state:
+                pass
+
+        self.last_hour_consumption_kwh = round(sum(v for k, v in slot_data.items() if v > 0 and k != "battery"), 3)
+        self.last_hour_grid_consumption_kwh = getattr(self, '_last_grid_cons', 0.0)
+        self.last_hour_battery_consumption_kwh = getattr(self, '_last_battery_cons', 0.0)
+        self.last_hour_cost_euro = getattr(self, '_last_hour_cost', 0.0)
+
+        # Calculate renewable energy used after all devices in this slot are registered
+        self._calculate_renewable_usage_for_slot(slot_key, energy_price)
+
+    def _calculate_renewable_usage_for_slot(self, slot_key, energy_price=None):
         """
         Calculate how much renewable energy was actually used by devices in this time slot.
-        Renewable energy = solar production (negative consumption) + battery discharge (negative consumption)
-        Devices usage = all positive consumption values from actual devices
-        Renewable used = min(total positive consumption, total renewable available)
-        
-        Note: This is called each time a device registers. We update the total by 
-        removing the old value for this slot and adding the new calculated value.
         """
         slot_data = self.hourly_consumption_by_slot.get(slot_key, {})
         if not slot_data:
             return
-        
-        # Separate renewable sources from consuming devices
+
         renewable_available = 0.0
-        devices_consumption = 0.0
-        
+        house_consumption = 0.0
+        battery_provided = 0.0
+        battery_consumed = 0.0
+
         for device_name, consumption_kwh in slot_data.items():
             if consumption_kwh < 0:
                 # Negative = energy production (solar or battery discharge)
-                renewable_available += abs(consumption_kwh)
-            elif device_name not in ["solar", "battery"]:
-                # Positive = energy consumption by actual devices (exclude battery charging)
-                devices_consumption += consumption_kwh
+                if device_name == "battery":
+                    battery_provided += abs(consumption_kwh)
+                else: # mostly solar and others
+                    renewable_available += abs(consumption_kwh)
+            elif consumption_kwh > 0:
+                # Positive = energy consumption by actual devices
+                if device_name == "battery":
+                    battery_consumed += consumption_kwh # e.g. charging from solar
+                else:
+                    house_consumption += consumption_kwh
+
+        # 1. Solar powers the house first
+        solar_to_house = min(renewable_available, house_consumption)
+        house_remaining = max(0.0, house_consumption - solar_to_house)
+
+        # 2. Leftover solar charges the battery
+        solar_remaining = max(0.0, renewable_available - solar_to_house)
+        solar_to_battery = min(solar_remaining, battery_consumed)
+
+        # 3. Battery discharges to power the remaining house needs
+        battery_to_house = min(battery_provided, house_remaining)
+        house_remaining = max(0.0, house_remaining - battery_to_house)
+
+        # 4. Grid covers only what the house still needs (rejecting battery overdraws)
+        net_grid_consumption = house_remaining
         
-        # Renewable energy used is the minimum of what's available and what's consumed
-        renewable_used_this_slot = min(renewable_available, devices_consumption)
-        
-        # Track previous value for this slot so we can update (not double-count)
+        renewable_used_this_slot = solar_to_house + solar_to_battery
+
+        # Get previous renewable and cost values for this slot (0 if not yet calculated)
+        previous_renewable = getattr(self, '_renewable_per_slot', {}).get(slot_key, 0.0)
+        previous_cost = getattr(self, '_cost_per_slot', {}).get(slot_key, 0.0)
+        previous_solar = getattr(self, '_solar_per_slot', {}).get(slot_key, 0.0)
+
+        # Store for display
+        self._last_grid_cons = net_grid_consumption
+        self._last_battery_cons = battery_to_house 
+        self._last_solar_cons = solar_to_house
+        self.last_hour_grid_consumption_kwh = round(self._last_grid_cons, 3)
+        self.last_hour_battery_consumption_kwh = round(self._last_battery_cons, 3)
+        self.last_hour_solar_consumption_kwh = round(self._last_solar_cons, 3)
+        self.last_hour_solar_generated_kwh = round(renewable_available, 3)
+
+        # Ensure dictionaries exist
         if not hasattr(self, '_renewable_per_slot'):
             self._renewable_per_slot = {}
-        
-        # Get previous value for this slot (0 if not yet calculated)
-        previous_value = self._renewable_per_slot.get(slot_key, 0.0)
-        
-        # Update total: remove old value, add new value
-        self.total_daily_renewable_kwh -= previous_value
+        if not hasattr(self, '_cost_per_slot'):
+            self._cost_per_slot = {}
+        if not hasattr(self, '_solar_per_slot'):
+            self._solar_per_slot = {}
+
+        # Price fallback logic
+        if energy_price is not None:
+            price = energy_price
+        elif self.last_world_state:
+            price = self.last_world_state.get("energy_price", 0.12)
+        else:
+            price = 0.12
+
+        new_cost_euro = net_grid_consumption * price
+
+        # Update totals: remove old value, add new value
+        self.total_daily_renewable_kwh -= previous_renewable
         self.total_daily_renewable_kwh += renewable_used_this_slot
         
-        # Store new value for this slot
+        self.total_daily_solar_generated_kwh -= previous_solar
+        self.total_daily_solar_generated_kwh += renewable_available
+        
+        self.total_daily_cost_euro -= previous_cost
+        self.total_daily_cost_euro += new_cost_euro
+
+        # Store new values for this slot
         self._renewable_per_slot[slot_key] = renewable_used_this_slot
+        self._solar_per_slot[slot_key] = renewable_available
+        self._cost_per_slot[slot_key] = new_cost_euro
+        self._last_hour_cost = new_cost_euro
+        self.last_hour_cost_euro = round(self._last_hour_cost, 3)
 
     def generate_temperature(self, hour):
         """Generate realistic temperature variations with smooth transitions."""
@@ -142,26 +219,26 @@ class WorldAgent(Agent):
         """Generate solar production based on sun patterns."""
         params = self.season_params.get(self.season, self.season_params["summer"])
         solar_peak = params["solar_peak"]
-        
+
         # Solar production follows sun angle (6am to 6pm)
         if 6 <= hour <= 18:
             # Bell curve pattern with peak at noon
             angle = (hour - 6) * math.pi / 12
             production = solar_peak * math.sin(angle)
-            
+
             # Add weather variability (clouds, etc.)
             weather_factor = random.uniform(0.7, 1.0)
             production *= weather_factor
         else:
             production = 0.0
-        
+
         return round(max(0, production), 2)
 
     def generate_electricity_price(self, hour):
         """Generate electricity price with peak/off-peak patterns."""
         # Base price
         base_price = 0.12
-        
+
         # Peak hours (7-9am and 6-8pm) have higher prices
         if (7 <= hour <= 9) or (18 <= hour <= 20):
             peak_multiplier = 2.0
@@ -170,21 +247,28 @@ class WorldAgent(Agent):
             peak_multiplier = 0.7
         else:
             peak_multiplier = 1.2
-        
+
         price = base_price * peak_multiplier
-        
+
         # Add market variation
         variation = random.uniform(0.9, 1.1)
         price *= variation
-        
+
         return round(price, 3)
 
     def generate_world_state(self):
-        """Generate current world state data."""
+        """Generate current world state data.
+
+        Bug 9 fix: generate_temperature() mutates self.current_temperature internally.
+        apply_device_effects() is called separately in WorldSimulationBehaviour AFTER
+        this method, so here we read the temperature BEFORE device effects to avoid
+        the field being set twice. The behaviour will overwrite state["temperature"]
+        after applying device effects.
+        """
         hour = self.clock_minutes // 60
         minute = self.clock_minutes % 60
         float_hour = hour + minute / 60.0
-        
+
         return {
             "hour": hour,
             "minute": minute,
@@ -193,8 +277,14 @@ class WorldAgent(Agent):
             "energy_price": self.generate_electricity_price(float_hour),
             "season": self.season,
             "day": self.day_count,
-            "hourly_consumption_total_kwh": round(self.last_hour_consumption_kwh, 3),
+            "hourly_consumption_total_kwh": round(getattr(self, 'last_hour_consumption_kwh', 0.0), 3),
+            "hourly_grid_consumption_kwh": round(getattr(self, 'last_hour_grid_consumption_kwh', 0.0), 3),
+            "hourly_battery_consumption_kwh": round(getattr(self, 'last_hour_battery_consumption_kwh', 0.0), 3),
+            "hourly_solar_consumption_kwh": round(getattr(self, 'last_hour_solar_consumption_kwh', 0.0), 3),
+            "hourly_cost_euro": round(getattr(self, 'last_hour_cost_euro', 0.0), 3),
             "daily_consumption_total_kwh": round(self.total_daily_consumption_kwh, 3),
+            "hourly_solar_generated_kwh": round(getattr(self, 'last_hour_solar_generated_kwh', 0.0), 3),
+            "daily_solar_generated_kwh": round(getattr(self, 'total_daily_solar_generated_kwh', 0.0), 3),
             "daily_cost_euro": round(self.total_daily_cost_euro, 3),
             "daily_renewable_kwh": round(self.total_daily_renewable_kwh, 3),
             "device_daily_consumption_kwh": {
@@ -203,13 +293,18 @@ class WorldAgent(Agent):
             },
             "simulated": True  # Flag to indicate this is simulated data
         }
-    
+
     def apply_device_effects(self):
         """Apply temperature effects from active devices."""
         # AC cooling effect
         if self.active_devices.get("ac.livingroom") == "ON":
             # AC cools the environment gradually, reduced to step scale
             self.current_temperature -= 0.8 * (MINUTES_PER_STEP / 60.0)
+
+        # Heater warming effect
+        if self.active_devices.get("heater.livingroom") == "ON":
+            # Heater warms the environment gradually, reduced to step scale
+            self.current_temperature += 0.8 * (MINUTES_PER_STEP / 60.0)
 
         # Fridge cooling effect (minor, mostly contained)
         if self.active_devices.get("fridge") == "ON":
@@ -233,28 +328,38 @@ class WorldAgent(Agent):
                         minute = data.get("minute", 0)
                         day = data.get("day")
                         consumption_kwh = float(data.get("consumption_kwh", 0.0))
+                        # Bug 7 fix: read the energy_price sent by the device for this slot
+                        energy_price = data.get("energy_price")
                         self.agent.register_device_consumption(
                             device_name=device_name,
                             day=day,
                             hour=hour,
                             minute=minute,
                             consumption_kwh=consumption_kwh,
+                            energy_price=energy_price,
                         )
 
                         if GUI_AVAILABLE and self.agent.last_world_state:
                             gui_state = get_simulation_state()
                             merged_state = self.agent.last_world_state.copy()
-                            merged_state["hourly_consumption_total_kwh"] = round(self.agent.last_hour_consumption_kwh, 3)
+                            merged_state["hourly_consumption_total_kwh"] = round(getattr(self.agent, 'last_hour_consumption_kwh', 0.0), 3)
+                            merged_state["hourly_grid_consumption_kwh"] = round(getattr(self.agent, 'last_hour_grid_consumption_kwh', 0.0), 3)
+                            merged_state["hourly_battery_consumption_kwh"] = round(getattr(self.agent, 'last_hour_battery_consumption_kwh', 0.0), 3)
+                            merged_state["hourly_solar_consumption_kwh"] = round(getattr(self.agent, 'last_hour_solar_consumption_kwh', 0.0), 3)
+                            merged_state["hourly_cost_euro"] = round(getattr(self.agent, 'last_hour_cost_euro', 0.0), 3)
+                            merged_state["hourly_solar_generated_kwh"] = round(getattr(self.agent, 'last_hour_solar_generated_kwh', 0.0), 3)
                             merged_state["daily_consumption_total_kwh"] = round(self.agent.total_daily_consumption_kwh, 3)
                             merged_state["daily_cost_euro"] = round(self.agent.total_daily_cost_euro, 3)
                             merged_state["daily_renewable_kwh"] = round(self.agent.total_daily_renewable_kwh, 3)
+                            merged_state["daily_solar_generated_kwh"] = round(getattr(self.agent, 'total_daily_solar_generated_kwh', 0.0), 3)
                             merged_state["device_daily_consumption_kwh"] = {
                                 device: round(total, 3)
                                 for device, total in self.agent.device_daily_consumption_kwh.items()
                             }
                             gui_state.update_world_state(merged_state)
                 except (json.JSONDecodeError, KeyError) as e:
-                    pass  # Ignore invalid messages
+                    # Bug 14 fix: log instead of silently ignoring errors
+                    logging.debug(f"[WorldAgent] DeviceStateListener parse error: {e}")
 
     class WorldSimulationBehaviour(PeriodicBehaviour):
         """Behavior that simulates world conditions and broadcasts them."""
@@ -262,7 +367,13 @@ class WorldAgent(Agent):
             if GUI_AVAILABLE and get_simulation_state().is_paused:
                 return
 
-            # Simulate current hour state first, then advance to the next hour.
+            # Bug 9 fix: generate_world_state() calls generate_temperature() which already
+            # mutates self.current_temperature. apply_device_effects() then makes a
+            # second mutation. To keep the logic clean:
+            # 1. Generate the base world state (temperature from natural cycle)
+            # 2. Apply device effects to self.current_temperature
+            # 3. Overwrite state["temperature"] with the post-effects value
+            # This preserves the intended design without double-applying random noise.
             state = self.agent.generate_world_state()
 
             # Apply device effects AFTER natural temp calculation
@@ -271,22 +382,20 @@ class WorldAgent(Agent):
             # Update state with modified temperature after device effects
             state["temperature"] = round(self.agent.current_temperature, 1)
 
-            # Calculate cost for the current step based on net house consumption
-            price = state["energy_price"]
-            net_power = 0.0
-            if GUI_AVAILABLE:
-                gui_state = get_simulation_state()
-                devs = gui_state.get_all_devices()
-                for d in devs:
-                    d_state = gui_state.get_device_state(d)
-                    net_power += d_state.get("power_kw", 0.0)
-            
-            if net_power > 0:
-                step_consumption = net_power * (MINUTES_PER_STEP / 60.0)
-                self.agent.total_daily_cost_euro += step_consumption * price
-
             self.agent.last_world_state = state.copy()
 
+            # Inject solar production into the consumption tracker
+            float_hour = state["hour"] + state["minute"] / 60.0
+            solar_power_kw = self.agent.generate_solar_production(float_hour)
+            # Register it as negative consumption, since it produces energy
+            self.agent.register_device_consumption(
+                device_name="solar",
+                day=state["day"],
+                hour=state["hour"],
+                minute=state["minute"],
+                consumption_kwh=-solar_power_kw * (MINUTES_PER_STEP / 60.0),
+                energy_price=0.0
+            )
 
             # Update GUI state
             if GUI_AVAILABLE:
