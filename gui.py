@@ -217,7 +217,7 @@ class SimulationGUI:
         self.current_cost_label = ttk.Label(info_frame, text="-- €", style="Value.TLabel")
         self.current_cost_label.grid(row=2, column=1, sticky=tk.W, padx=5, pady=2)
 
-        ttk.Label(info_frame, text="Grid Power:", style="Heading.TLabel").grid(row=2, column=2, sticky=tk.W, padx=5, pady=2)
+        ttk.Label(info_frame, text="System Power:", style="Heading.TLabel").grid(row=2, column=2, sticky=tk.W, padx=5, pady=2)
         self.power_usage_label = ttk.Label(info_frame, text="-- kW / -- kW", style="Value.TLabel")
         self.power_usage_label.grid(row=2, column=3, sticky=tk.W, padx=5, pady=2)
         
@@ -249,13 +249,15 @@ class SimulationGUI:
         self.battery_cons_label.config(text=f"{world.get('hourly_battery_consumption_kwh') or 0.0:.3f} kWh")
         self.solar_cons_label.config(text=f"{world.get('hourly_solar_consumption_kwh') or 0.0:.3f} kWh")
         self.current_cost_label.config(text=f"{world.get('hourly_cost_euro') or 0.0:.3f} €", foreground="#ffb347")
-        self.solar_generated_label.config(text=f"{world.get('hourly_solar_generated_kwh') or 0.0:.3f} kWh")
+        self.solar_generated_label.config(text=f"{world.get('solar_production') or 0.0:.3f} kWh")
         
         # Calculate current total power consumption from all devices
         from config import MAX_POWER_KW
         total_power = 0.0
         total_provided = 0.0
         battery_extra = 0.0
+        battery_capacity = 0.0
+        solar_gen = world.get("solar_production", 0.0)
         
         device_names = self.state.get_all_devices()
         for device_name in device_names:
@@ -284,9 +286,10 @@ class SimulationGUI:
         grid_drawn = max(0.0, total_power - total_provided)
 
         # Update power usage display with color coding
-        # For Grid power, it's just what is drawn from the grid vs the grid limit.
         dynamic_limit = MAX_POWER_KW
-        power_percentage = (grid_drawn / dynamic_limit) * 100 if dynamic_limit > 0 else 0
+        system_total_capacity = dynamic_limit + solar_gen + battery_capacity
+        
+        power_percentage = (total_power / system_total_capacity) * 100 if system_total_capacity > 0 else 0
         
         if power_percentage >= 100:
             power_color = "#ff3333"  # Red - at or over limit
@@ -298,7 +301,7 @@ class SimulationGUI:
             power_color = "#00ff88"  # Green - normal
 
         self.power_usage_label.config(
-            text=f"{grid_drawn:.2f} kW / {dynamic_limit:.2f} kW (Battery Extra: {battery_extra:.2f} kW)",
+            text=f"{total_power:.3f} kW / {system_total_capacity:.3f} kW",
             foreground=power_color
         )
 
@@ -312,7 +315,7 @@ class SimulationGUI:
 
         # Update graphs
         if hasattr(self, 'graphs_panel'):
-            self.graphs_panel.update_data(world, grid_drawn, dynamic_limit, battery_extra)
+            self.graphs_panel.update_data(world, total_power, dynamic_limit, solar_gen, battery_capacity)
 
         # Schedule next update
         self.root.after(1000, self.update_display)

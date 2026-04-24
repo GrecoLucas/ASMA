@@ -15,6 +15,10 @@ class GraphsPanel:
         self.bg_color = "#2d2d2d"
         self.text_color = "#e0e0e0"
 
+        self.battery_color = "#00ffea"
+        self.solar_color = "#ffed50"
+        self.grid_color = "#ff285e"
+
         # Initialize history tracking
         self.history = {
             "times": [],
@@ -40,9 +44,9 @@ class GraphsPanel:
         self.ax_pie = self.fig.add_subplot(2, 2, 1)
         self.configure_axis(self.ax_pie, "Total Consumption Mix")
 
-        # 2. Gauge (Grid Power) - We'll simulate it using a half-polar or bar
+        # 2. Gauge (System Power) - We'll simulate it using a half-polar or bar
         self.ax_gauge = self.fig.add_subplot(2, 2, 2, polar=True)
-        self.configure_axis(self.ax_gauge, "Grid Power Gauge")
+        self.configure_axis(self.ax_gauge, "System Power Gauge")
 
         # 3. Line Graph (Energy Sources)
         self.ax_sources = self.fig.add_subplot(2, 2, 3)
@@ -69,9 +73,9 @@ class GraphsPanel:
             ax.set_facecolor(self.bg_color)
             ax.tick_params(colors=self.text_color, labelsize=8)
 
-    def draw_gauge(self, val, max_val_est=10.0, battery_extra=0.0):
+    def draw_gauge(self, total_power, max_grid_power=10.0, solar_gen=0.0, battery_capacity=0.0):
         self.ax_gauge.clear()
-        self.configure_axis(self.ax_gauge, "Grid Power (kW)")
+        self.configure_axis(self.ax_gauge, "System Power (kW)")
         
         self.ax_gauge.set_theta_offset(np.pi)
         self.ax_gauge.set_theta_direction(-1)
@@ -80,35 +84,47 @@ class GraphsPanel:
         self.ax_gauge.set_ylim(0, 1)
         self.ax_gauge.set_yticks([])
         
-        tot_max = max_val_est + battery_extra
+        tot_max = max_grid_power + solar_gen + battery_capacity
         if tot_max <= 0: tot_max = 1.0
         
         self.ax_gauge.set_xticks(np.linspace(0, np.pi, 5))
         self.ax_gauge.set_xticklabels(['0', f'{tot_max/4:.1f}', f'{tot_max/2:.1f}', f'{tot_max*0.75:.1f}', f'{tot_max:.1f}'])
         
         # Color sections
-        # Green: 0 to 70% of max_val_est
-        # Yellow: 70% to 85% of max_val_est
-        # Orange: 85% to 100% of max_val_est
-        # Blue: max_val_est to tot_max (Battery Extra)
+        # Solar: 0 to solar_gen (yellow)
+        # Battery: solar_gen to solar_gen + battery_capacity (yellow)
+        # Grid: green -> yellow -> red
         def color_range(start_val, end_val, color):
+            if end_val <= start_val: return
             s_angle = (start_val / tot_max) * np.pi
             e_angle = (end_val / tot_max) * np.pi
             self.ax_gauge.fill_between(np.linspace(s_angle, e_angle, 50), 0, 1, color=color, alpha=0.5)
 
-        color_range(0, 0.7 * max_val_est, '#00ff88')
-        color_range(0.7 * max_val_est, 0.85 * max_val_est, '#ffcc00')
-        color_range(0.85 * max_val_est, max_val_est, '#ff9900')
-        if battery_extra > 0:
-            color_range(max_val_est, tot_max, '#66b3ff')
+        current_pos = 0.0
+        
+        # Solar
+        if solar_gen > 0:
+            color_range(current_pos, current_pos + solar_gen, self.solar_color)
+            current_pos += solar_gen
+            
+        # Battery
+        if battery_capacity > 0:
+            color_range(current_pos, current_pos + battery_capacity, self.battery_color)
+            current_pos += battery_capacity
+            
+        # Grid
+        if max_grid_power > 0:
+            color_range(current_pos, current_pos + 0.7 * max_grid_power, '#00ff88')
+            color_range(current_pos + 0.7 * max_grid_power, current_pos + 0.85 * max_grid_power, '#ffcc00')
+            color_range(current_pos + 0.85 * max_grid_power, current_pos + max_grid_power, '#ff3333')
 
         # Calculate angle for the needle
-        clamped_val = max(0, min(val, tot_max))
+        clamped_val = max(0, min(total_power, tot_max))
         angle = (clamped_val / tot_max) * np.pi
         
-        self.ax_gauge.plot([angle, angle], [0, 1], color='#ff3333', linewidth=3)
+        self.ax_gauge.plot([angle, angle], [0, 1], color="#2C2C2C", linewidth=3) # Changed needle to white for visibility
 
-    def update_data(self, world, total_grid_power, max_grid_power, battery_extra=0.0):
+    def update_data(self, world, total_power, max_grid_power, solar_gen=0.0, battery_capacity=0.0):
         hour = world.get("hour", 0)
         minute = world.get("minute", 0)
         time_str = f"{hour:02d}:{minute:02d}"
@@ -134,7 +150,7 @@ class GraphsPanel:
             self.last_recorded_time = time_str
             time_changed = True
 
-        current_val = (total_grid_power, max_grid_power, battery_extra)
+        current_val = (total_power, max_grid_power, solar_gen, battery_capacity)
         gauge_changed = False
         if not hasattr(self, 'last_gauge_val') or self.last_gauge_val != current_val:
             self.last_gauge_val = current_val
@@ -149,7 +165,7 @@ class GraphsPanel:
             self.configure_axis(self.ax_pie, "Consumption Mix (Daily)")
             labels = ['Grid', 'Battery', 'Solar']
             sizes = [grid_cons, batt_cons, sol_cons]
-            colors = ['#ff9999','#66b3ff','#99ff99']
+            colors = [self.grid_color, self.battery_color, self.solar_color]
             
             if sum(sizes) > 0.01:
                 wedges, texts = self.ax_pie.pie(sizes, colors=colors, startangle=90)
@@ -163,25 +179,21 @@ class GraphsPanel:
             self.configure_axis(self.ax_sources, "Sources (Last 60 ticks)")
             if len(self.history["times"]) > 0:
                 x_vals = range(len(self.history["times"]))
-                self.ax_sources.plot(x_vals, self.history["grid_cons"], label='Grid', color='#ff9999')
-                self.ax_sources.plot(x_vals, self.history["battery_cons"], label='Battery', color='#66b3ff')
-                self.ax_sources.plot(x_vals, self.history["solar_cons"], label='Solar', color='#99ff99')
+                self.ax_sources.plot(x_vals, self.history["grid_cons"], label='Grid', color=self.grid_color)
+                self.ax_sources.plot(x_vals, self.history["battery_cons"], label='Battery', color=self.battery_color)
+                self.ax_sources.plot(x_vals, self.history["solar_cons"], label='Solar', color=self.solar_color)
                 self.ax_sources.legend(loc='upper left', fontsize=7, facecolor=self.bg_color, edgecolor='none', labelcolor=self.text_color)
-                self.ax_sources.set_xticks([0, len(x_vals)-1])
-                self.ax_sources.set_xticklabels([self.history["times"][0], self.history["times"][-1]])
 
             # Redraw Cost Line Graph
             self.ax_cost.clear()
             self.configure_axis(self.ax_cost, "Cost (€) (Last 60 ticks)")
             if len(self.history["times"]) > 0:
                 x_vals = range(len(self.history["times"]))
-                self.ax_cost.plot(x_vals, self.history["costs"], label='Cost', color='#ffcc00')
-                self.ax_cost.set_xticks([0, len(x_vals)-1])
-                self.ax_cost.set_xticklabels([self.history["times"][0], self.history["times"][-1]])
+                self.ax_cost.plot(x_vals, self.history["costs"], label='Cost', color="#ffcc00")
 
         if gauge_changed or time_changed:
             # Redraw Gauge
-            self.draw_gauge(total_grid_power, max_grid_power if max_grid_power > 0 else 10.0, battery_extra)
+            self.draw_gauge(total_power, max_grid_power if max_grid_power > 0 else 10.0, solar_gen, battery_capacity)
 
         # Refresh Canvas
         self.canvas.draw_idle()
