@@ -119,6 +119,7 @@ class GraphsPanel:
         cost = world.get("hourly_cost_euro", 0.0)
 
         # Update History only once per simulated minute (to avoid spamming points when time stalls)
+        time_changed = False
         if self.last_recorded_time != time_str:
             self.history["times"].append(time_str)
             self.history["grid_cons"].append(grid_cons)
@@ -131,44 +132,56 @@ class GraphsPanel:
                 for key in self.history:
                     self.history[key] = self.history[key][-60:]
             self.last_recorded_time = time_str
+            time_changed = True
 
-        # Redraw Pie
-        self.ax_pie.clear()
-        self.configure_axis(self.ax_pie, "Consumption Mix (Daily)")
-        labels = ['Grid', 'Battery', 'Solar']
-        sizes = [grid_cons, batt_cons, sol_cons]
-        colors = ['#ff9999','#66b3ff','#99ff99']
-        
-        if sum(sizes) > 0.01:
-            wedges, texts = self.ax_pie.pie(sizes, colors=colors, startangle=90)
-            self.ax_pie.legend(wedges, labels, loc="upper right", bbox_to_anchor=(1.2, 1.0),
-                               fontsize=7, facecolor=self.bg_color, edgecolor='none', labelcolor=self.text_color)
-        else:
-            self.ax_pie.text(0, 0, "No Data", ha='center', va='center', color=self.text_color)
+        current_val = (total_grid_power, max_grid_power, battery_extra)
+        gauge_changed = False
+        if not hasattr(self, 'last_gauge_val') or self.last_gauge_val != current_val:
+            self.last_gauge_val = current_val
+            gauge_changed = True
 
-        # Redraw Gauge
-        self.draw_gauge(total_grid_power, max_grid_power if max_grid_power > 0 else 10.0, battery_extra)
+        if not (time_changed or gauge_changed):
+            return
 
-        # Redraw Sources Line Graph
-        self.ax_sources.clear()
-        self.configure_axis(self.ax_sources, "Sources (Last 60 ticks)")
-        if len(self.history["times"]) > 0:
-            x_vals = range(len(self.history["times"]))
-            self.ax_sources.plot(x_vals, self.history["grid_cons"], label='Grid', color='#ff9999')
-            self.ax_sources.plot(x_vals, self.history["battery_cons"], label='Battery', color='#66b3ff')
-            self.ax_sources.plot(x_vals, self.history["solar_cons"], label='Solar', color='#99ff99')
-            self.ax_sources.legend(loc='upper left', fontsize=7, facecolor=self.bg_color, edgecolor='none', labelcolor=self.text_color)
-            self.ax_sources.set_xticks([0, len(x_vals)-1])
-            self.ax_sources.set_xticklabels([self.history["times"][0], self.history["times"][-1]])
+        if time_changed:
+            # Redraw Pie
+            self.ax_pie.clear()
+            self.configure_axis(self.ax_pie, "Consumption Mix (Daily)")
+            labels = ['Grid', 'Battery', 'Solar']
+            sizes = [grid_cons, batt_cons, sol_cons]
+            colors = ['#ff9999','#66b3ff','#99ff99']
+            
+            if sum(sizes) > 0.01:
+                wedges, texts = self.ax_pie.pie(sizes, colors=colors, startangle=90)
+                self.ax_pie.legend(wedges, labels, loc="upper right", bbox_to_anchor=(1.2, 1.0),
+                                   fontsize=7, facecolor=self.bg_color, edgecolor='none', labelcolor=self.text_color)
+            else:
+                self.ax_pie.text(0, 0, "No Data", ha='center', va='center', color=self.text_color)
 
-        # Redraw Cost Line Graph
-        self.ax_cost.clear()
-        self.configure_axis(self.ax_cost, "Cost (€) (Last 60 ticks)")
-        if len(self.history["times"]) > 0:
-            x_vals = range(len(self.history["times"]))
-            self.ax_cost.plot(x_vals, self.history["costs"], label='Cost', color='#ffcc00')
-            self.ax_cost.set_xticks([0, len(x_vals)-1])
-            self.ax_cost.set_xticklabels([self.history["times"][0], self.history["times"][-1]])
+            # Redraw Sources Line Graph
+            self.ax_sources.clear()
+            self.configure_axis(self.ax_sources, "Sources (Last 60 ticks)")
+            if len(self.history["times"]) > 0:
+                x_vals = range(len(self.history["times"]))
+                self.ax_sources.plot(x_vals, self.history["grid_cons"], label='Grid', color='#ff9999')
+                self.ax_sources.plot(x_vals, self.history["battery_cons"], label='Battery', color='#66b3ff')
+                self.ax_sources.plot(x_vals, self.history["solar_cons"], label='Solar', color='#99ff99')
+                self.ax_sources.legend(loc='upper left', fontsize=7, facecolor=self.bg_color, edgecolor='none', labelcolor=self.text_color)
+                self.ax_sources.set_xticks([0, len(x_vals)-1])
+                self.ax_sources.set_xticklabels([self.history["times"][0], self.history["times"][-1]])
+
+            # Redraw Cost Line Graph
+            self.ax_cost.clear()
+            self.configure_axis(self.ax_cost, "Cost (€) (Last 60 ticks)")
+            if len(self.history["times"]) > 0:
+                x_vals = range(len(self.history["times"]))
+                self.ax_cost.plot(x_vals, self.history["costs"], label='Cost', color='#ffcc00')
+                self.ax_cost.set_xticks([0, len(x_vals)-1])
+                self.ax_cost.set_xticklabels([self.history["times"][0], self.history["times"][-1]])
+
+        if gauge_changed or time_changed:
+            # Redraw Gauge
+            self.draw_gauge(total_grid_power, max_grid_power if max_grid_power > 0 else 10.0, battery_extra)
 
         # Refresh Canvas
-        self.canvas.draw()
+        self.canvas.draw_idle()
