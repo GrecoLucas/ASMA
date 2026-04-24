@@ -2,7 +2,7 @@
 
 XMPP_SERVER = "localhost"
 PASSWORD = "password_super_secreta"
-MAX_POWER_KW = 1.8  # Global power limit of the house for P2P negotiation
+MAX_POWER_KW = 3.0  # Global power limit of the house for P2P negotiation
 
 # JIDS of each agent
 AGENTS = {
@@ -62,8 +62,8 @@ AIR_FRYER_CHANCE_PER_HOUR = 0.05
 AIR_FRYER_CYCLE_DURATION_MINUTES = 120
 
 # Battery
-BATTERY_CAPACITY_KWH = 5.0
-BATTERY_MAX_POWER_KW = 20.0
+BATTERY_CAPACITY_KWH = 20.0
+BATTERY_MAX_POWER_KW = 2.0
 BATTERY_INITIAL_CHARGE_PERCENT = 0.5
 BATTERY_SOLAR_CHARGE_START_HOUR = 7
 BATTERY_SOLAR_CHARGE_END_HOUR = 12

@@ -112,12 +112,13 @@ class BatteryAgent(Device):
                     logging.warning(f"[BatteryP2P] Error: {e}")
 
     async def setup(self):
-        # Comportamento para ouvir o Mundo (horas)
-        t_world = Template()
-        t_world.sender = AGENTS["world"]
-        self.add_behaviour(self.MonitorEnvironment(), t_world)
+        # Call base setup to initialize peer status and standard behaviors
+        await super().setup()
 
-        # Comportamento para responder aos Peers
+        # Overwrite/Add specific battery behaviors
+        # Note: MonitorEnvironment is already added by super().setup() with world_template
+        
+        # We add the specific BatteryP2P behavior for battery-specific logic
         t_p2p = Template()
         t_p2p.metadata = {"ontology": "p2p"}
         self.add_behaviour(self.BatteryP2P(), t_p2p)

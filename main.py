@@ -33,15 +33,16 @@ async def main():
     
     world_agent = WorldAgent(AGENTS["world"], PASSWORD, season="summer", receivers=jid_list)
 
-    # Start all agents (devices first, then world broadcaster)
-    await ac_livingroom.start(auto_register=True)
-    await heater_livingroom.start(auto_register=True)
-    await fridge.start(auto_register=True)
-    await washingmachine.start(auto_register=True)
-    await dish_washer.start(auto_register=True)
-    await battery_agent.start(auto_register=True)
-    await air_fryer.start(auto_register=True)
-    await world_agent.start(auto_register=True)
+    # Start all agents concurrently (devices and world broadcaster)
+    agents_to_start = [
+        ac_livingroom, heater_livingroom, fridge, 
+        washingmachine, dish_washer, battery_agent, 
+        air_fryer, world_agent
+    ]
+    
+    print("Starting agents... (this may take a few seconds)")
+    await asyncio.gather(*[agent.start(auto_register=True) for agent in agents_to_start])
+    print("All agents started.")
 
     try:
         while True:

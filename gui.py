@@ -206,7 +206,7 @@ class SimulationGUI:
         self.current_cost_label.grid(row=2, column=1, sticky=tk.W, padx=5, pady=2)
 
         ttk.Label(info_frame, text="Grid Power:", style="Heading.TLabel").grid(row=2, column=2, sticky=tk.W, padx=5, pady=2)
-        self.power_usage_label = ttk.Label(info_frame, text="-- kW / 7.00 kW", style="Value.TLabel")
+        self.power_usage_label = ttk.Label(info_frame, text="-- kW / -- kW", style="Value.TLabel")
         self.power_usage_label.grid(row=2, column=3, sticky=tk.W, padx=5, pady=2)
         
         ttk.Label(info_frame, text="Current Solar Generation:", style="Heading.TLabel").grid(row=2, column=4, sticky=tk.W, padx=5, pady=2)
