@@ -184,7 +184,7 @@ class SimulationGUI:
         self.day_label.grid(row=0, column=7, sticky=tk.W, padx=5)
 
         # Row 2: Consumptions, Costs, power usage
-        ttk.Label(info_frame, text="Last Hour Cons:", style="Heading.TLabel").grid(row=1, column=0, sticky=tk.W, padx=5, pady=2)
+        ttk.Label(info_frame, text="Current Consumption:", style="Heading.TLabel").grid(row=1, column=0, sticky=tk.W, padx=5, pady=2)
         self.hourly_consumption_label = ttk.Label(info_frame, text="-- kWh", style="Value.TLabel")
         self.hourly_consumption_label.grid(row=1, column=1, sticky=tk.W, padx=5, pady=2)
 
@@ -192,13 +192,30 @@ class SimulationGUI:
         self.daily_consumption_label = ttk.Label(info_frame, text="-- kWh", style="Value.TLabel")
         self.daily_consumption_label.grid(row=1, column=3, sticky=tk.W, padx=5, pady=2)
 
-        ttk.Label(info_frame, text="Last 24h cost:", style="Heading.TLabel").grid(row=1, column=4, sticky=tk.W, padx=5, pady=2)
-        self.cost_label = ttk.Label(info_frame, text="-- €", style="Value.TLabel")
-        self.cost_label.grid(row=1, column=5, sticky=tk.W, padx=5, pady=2)
+        ttk.Label(info_frame, text="Current Grid Cons:", style="Heading.TLabel").grid(row=1, column=4, sticky=tk.W, padx=5, pady=2)
+        self.grid_cons_label = ttk.Label(info_frame, text="-- kWh", style="Value.TLabel")
+        self.grid_cons_label.grid(row=1, column=5, sticky=tk.W, padx=5, pady=2)
 
-        ttk.Label(info_frame, text="Net Power:", style="Heading.TLabel").grid(row=1, column=6, sticky=tk.W, padx=5, pady=2)
+        ttk.Label(info_frame, text="Current Battery Cons:", style="Heading.TLabel").grid(row=1, column=6, sticky=tk.W, padx=5, pady=2)
+        self.battery_cons_label = ttk.Label(info_frame, text="-- kWh", style="Value.TLabel")
+        self.battery_cons_label.grid(row=1, column=7, sticky=tk.W, padx=5, pady=2)
+        
+        # Row 3: Current Cost, Grid Power, Solar Daily Generated
+        ttk.Label(info_frame, text="Current Cost:", style="Heading.TLabel").grid(row=2, column=0, sticky=tk.W, padx=5, pady=2)
+        self.current_cost_label = ttk.Label(info_frame, text="-- €", style="Value.TLabel")
+        self.current_cost_label.grid(row=2, column=1, sticky=tk.W, padx=5, pady=2)
+
+        ttk.Label(info_frame, text="Grid Power:", style="Heading.TLabel").grid(row=2, column=2, sticky=tk.W, padx=5, pady=2)
         self.power_usage_label = ttk.Label(info_frame, text="-- kW / 7.00 kW", style="Value.TLabel")
-        self.power_usage_label.grid(row=1, column=7, sticky=tk.W, padx=5, pady=2)
+        self.power_usage_label.grid(row=2, column=3, sticky=tk.W, padx=5, pady=2)
+        
+        ttk.Label(info_frame, text="Current Solar Generation:", style="Heading.TLabel").grid(row=2, column=4, sticky=tk.W, padx=5, pady=2)
+        self.solar_generated_label = ttk.Label(info_frame, text="-- kWh", style="Value.TLabel")
+        self.solar_generated_label.grid(row=2, column=5, columnspan=3, sticky=tk.W, padx=5, pady=2)
+
+        ttk.Label(info_frame, text="Current Solar Cons:", style="Heading.TLabel").grid(row=2, column=6, sticky=tk.W, padx=5, pady=2)
+        self.solar_cons_label = ttk.Label(info_frame, text="-- kWh", style="Value.TLabel")
+        self.solar_cons_label.grid(row=2, column=7, sticky=tk.W, padx=5, pady=2)
 
 
 
@@ -216,26 +233,50 @@ class SimulationGUI:
         self.day_label.config(text=f"Day {world.get('day') or 0}")
         self.hourly_consumption_label.config(text=f"{world.get('hourly_consumption_total_kwh') or 0.0:.3f} kWh")
         self.daily_consumption_label.config(text=f"{world.get('daily_consumption_total_kwh') or 0.0:.3f} kWh")
-        self.cost_label.config(text=f"{world.get('daily_cost_euro') or 0.0:.3f} €", foreground="#ffb347")
+        self.grid_cons_label.config(text=f"{world.get('hourly_grid_consumption_kwh') or 0.0:.3f} kWh")
+        self.battery_cons_label.config(text=f"{world.get('hourly_battery_consumption_kwh') or 0.0:.3f} kWh")
+        self.solar_cons_label.config(text=f"{world.get('hourly_solar_consumption_kwh') or 0.0:.3f} kWh")
+        self.current_cost_label.config(text=f"{world.get('hourly_cost_euro') or 0.0:.3f} €", foreground="#ffb347")
+        self.solar_generated_label.config(text=f"{world.get('hourly_solar_generated_kwh') or 0.0:.3f} kWh")
         
         # Calculate current total power consumption from all devices
         from config import MAX_POWER_KW
         total_power = 0.0
         total_provided = 0.0
+        battery_extra = 0.0
+        
         device_names = self.state.get_all_devices()
         for device_name in device_names:
             device_state = self.state.get_device_state(device_name)
+            
+            # Identify battery capacity extra remaining
+            if device_state.get('device_type') == 'battery':
+                # The battery's currently provided power 
+                # User rule: discharge limit is 2.0 (or max_power_kw), unless battery has less than 2.0 kWh
+                max_power = device_state.get("max_power_kw", 2.0)
+                charge_kwh = device_state.get("charge_kwh", 0.0)
+                
+                # Available capacity is min(max_power, charge_kwh)
+                battery_capacity = min(max_power, charge_kwh)
+                
+                # Current provision
+                batt_provided = device_state.get("provided_power_kw", 0.0)
+                
+                # Extra is what it can provide beyond current usage
+                battery_extra = max(0.0, battery_capacity - batt_provided)
+
             total_power += device_state.get("power_kw", 0.0)
             total_provided += device_state.get("provided_power_kw", 0.0)
 
-        dynamic_limit = MAX_POWER_KW + total_provided
+        # Net power being drawn from grid right now
+        grid_drawn = max(0.0, total_power - total_provided)
 
         # Update power usage display with color coding
-        # For Net power, it can be negative (injecting to grid).
-        power_percentage = (total_power / dynamic_limit) * 100 if dynamic_limit > 0 else 0
-        if total_power < 0:
-            power_color = "#00d4ff" # Blue - injecting
-        elif power_percentage >= 100:
+        # For Grid power, it's just what is drawn from the grid vs the grid limit.
+        dynamic_limit = MAX_POWER_KW
+        power_percentage = (grid_drawn / dynamic_limit) * 100 if dynamic_limit > 0 else 0
+        
+        if power_percentage >= 100:
             power_color = "#ff3333"  # Red - at or over limit
         elif power_percentage >= 85:
             power_color = "#ff9900"  # Orange - warning
@@ -245,7 +286,7 @@ class SimulationGUI:
             power_color = "#00ff88"  # Green - normal
 
         self.power_usage_label.config(
-            text=f"{total_power:.2f} kW / {dynamic_limit:.2f} kW",
+            text=f"{grid_drawn:.2f} kW / {dynamic_limit:.2f} kW (Battery Extra: {battery_extra:.2f} kW)",
             foreground=power_color
         )
 

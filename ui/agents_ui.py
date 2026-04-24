@@ -7,6 +7,7 @@ class DevicesPanel:
         self.frame = ttk.LabelFrame(parent, text="Devices", padding=10)
         self.frame.pack(fill=tk.BOTH, expand=True)
 
+        # Scrollable frame for devices
         canvas = tk.Canvas(self.frame, bg="#1e1e1e", highlightthickness=0)
         scrollbar = ttk.Scrollbar(self.frame, orient=tk.VERTICAL, command=canvas.yview)
         scrollable_frame = ttk.Frame(canvas)
@@ -31,111 +32,118 @@ class DevicesPanel:
         try:
             cog_image = Image.open('ui/cog.gif')
             while True:
-                frame = cog_image.convert('RGBA').resize((40, 40), Image.LANCZOS)
-                self.cog_frames.append(ImageTk.PhotoImage(frame))
+                self.cog_frames.append(ImageTk.PhotoImage(cog_image))
                 cog_image.seek(cog_image.tell() + 1)
         except EOFError:
             pass
 
     def add_device_frame(self, device_name, device_type):
+        """Add a device display frame."""
         device_frame = ttk.LabelFrame(self.devices_container, text=f"{device_name.title()}", padding=10)
         device_frame.grid(row=self.current_row, column=self.current_col, padx=10, pady=10, sticky="nsew")
-
+        
         self.current_col += 1
-        if self.current_col > 2:
+        if self.current_col > 2: # 3 items per row
             self.current_col = 0
             self.current_row += 1
 
+        # Device info labels
         info = {}
 
         if device_type == "air_conditioner":
             info["priority"] = ttk.Label(device_frame, text="Priority: --", style="Info.TLabel")
             info["priority"].pack(anchor=tk.W, pady=2)
+
             info["status"] = ttk.Label(device_frame, text="Status: --", style="Heading.TLabel")
             info["status"].pack(anchor=tk.W, pady=2)
+
             info["temp"] = ttk.Label(device_frame, text="Current Temp: -- °C", style="Heading.TLabel")
             info["temp"].pack(anchor=tk.W, pady=2)
+
             info["target"] = ttk.Label(device_frame, text="Target Temp: -- °C", style="Heading.TLabel")
             info["target"].pack(anchor=tk.W, pady=2)
+
             info["power"] = ttk.Label(device_frame, text="Power: -- kW", style="Heading.TLabel")
             info["power"].pack(anchor=tk.W, pady=2)
+
             info["consumption"] = ttk.Label(device_frame, text="Hourly: -- kWh | Daily: -- kWh", style="Info.TLabel")
             info["consumption"].pack(anchor=tk.W, pady=2)
+
             info["comfort"] = ttk.Label(device_frame, text="Comfort: ----", style="Info.TLabel")
             info["comfort"].pack(anchor=tk.W, pady=2)
 
         elif device_type == "refrigerator":
             info["priority"] = ttk.Label(device_frame, text="Priority: --", style="Info.TLabel")
             info["priority"].pack(anchor=tk.W, pady=2)
+
             info["status"] = ttk.Label(device_frame, text="Compressor: --", style="Heading.TLabel")
             info["status"].pack(anchor=tk.W, pady=2)
+
             info["temp"] = ttk.Label(device_frame, text="Interior Temp: -- °C", style="Heading.TLabel")
             info["temp"].pack(anchor=tk.W, pady=2)
+
             info["target"] = ttk.Label(device_frame, text="Target Temp: -- °C", style="Heading.TLabel")
             info["target"].pack(anchor=tk.W, pady=2)
+
             info["power"] = ttk.Label(device_frame, text="Power: -- kW", style="Heading.TLabel")
             info["power"].pack(anchor=tk.W, pady=2)
+
             info["consumption"] = ttk.Label(device_frame, text="Hourly: -- kWh | Daily: -- kWh", style="Info.TLabel")
             info["consumption"].pack(anchor=tk.W, pady=2)
 
         elif device_type == "washing_machine":
             info["priority"] = ttk.Label(device_frame, text="Priority: --", style="Info.TLabel")
             info["priority"].pack(anchor=tk.W, pady=2)
+
             info["motor_status"] = ttk.Label(device_frame, text="Motor: --", style="Heading.TLabel")
             info["motor_status"].pack(anchor=tk.W, pady=2)
+
             info["pending_clothes"] = ttk.Label(device_frame, text="Pending Clothes: --", style="Heading.TLabel")
             info["pending_clothes"].pack(anchor=tk.W, pady=2)
+
             info["wash_cycles"] = ttk.Label(device_frame, text="Wash Cycles Remaining: --", style="Heading.TLabel")
             info["wash_cycles"].pack(anchor=tk.W, pady=2)
+
             info["power"] = ttk.Label(device_frame, text="Power: -- kW", style="Heading.TLabel")
             info["power"].pack(anchor=tk.W, pady=2)
+
             info["consumption"] = ttk.Label(device_frame, text="Hourly: -- kWh | Daily: -- kWh", style="Info.TLabel")
             info["consumption"].pack(anchor=tk.W, pady=2)
 
         elif device_type == "dish_washer":
             info["priority"] = ttk.Label(device_frame, text="Priority: --", style="Info.TLabel")
             info["priority"].pack(anchor=tk.W, pady=2)
+
             info["motor_status"] = ttk.Label(device_frame, text="Motor: --", style="Heading.TLabel")
             info["motor_status"].pack(anchor=tk.W, pady=2)
+
             info["pending_dishes"] = ttk.Label(device_frame, text="Pending Dishes: --", style="Heading.TLabel")
             info["pending_dishes"].pack(anchor=tk.W, pady=2)
+
             info["wash_cycles"] = ttk.Label(device_frame, text="Wash Cycles Remaining: --", style="Heading.TLabel")
             info["wash_cycles"].pack(anchor=tk.W, pady=2)
+
             info["power"] = ttk.Label(device_frame, text="Power: -- kW", style="Heading.TLabel")
             info["power"].pack(anchor=tk.W, pady=2)
+
             info["consumption"] = ttk.Label(device_frame, text="Hourly: -- kWh | Daily: -- kWh", style="Info.TLabel")
             info["consumption"].pack(anchor=tk.W, pady=2)
 
         elif device_type == "battery":
-            info["priority"] = ttk.Label(device_frame, text="Priority: --", style="Info.TLabel")
-            info["priority"].pack(anchor=tk.W, pady=2)
-            info["status"] = ttk.Label(device_frame, text="State: --", style="Heading.TLabel")
-            info["status"].pack(anchor=tk.W, pady=2)
-            info["level"] = ttk.Label(device_frame, text="Charge Level: -- %", style="Heading.TLabel")
-            info["level"].pack(anchor=tk.W, pady=2)
-            info["power_provided"] = ttk.Label(device_frame, text="Provided to House: -- kW", style="Heading.TLabel")
-            info["power_provided"].pack(anchor=tk.W, pady=2)
-            info["solar_charge"] = ttk.Label(device_frame, text="Solar Charge: -- kW", style="Heading.TLabel")
-            info["solar_charge"].pack(anchor=tk.W, pady=2)
-
-        elif device_type == "air_fryer":
-            info["priority"] = ttk.Label(device_frame, text="Priority: --", style="Info.TLabel")
-            info["priority"].pack(anchor=tk.W, pady=2)
             info["status"] = ttk.Label(device_frame, text="Status: --", style="Heading.TLabel")
             info["status"].pack(anchor=tk.W, pady=2)
-            info["timer"] = ttk.Label(device_frame, text="Remaining: -- min", style="Heading.TLabel")
-            info["timer"].pack(anchor=tk.W, pady=2)
-            info["power"] = ttk.Label(device_frame, text="Power: -- kW", style="Heading.TLabel")
+
+            info["charge"] = ttk.Label(device_frame, text="Charge: -- / -- kWh (--%)", style="Heading.TLabel")
+            info["charge"].pack(anchor=tk.W, pady=2)
+
+            info["power"] = ttk.Label(device_frame, text="Power Flow: -- kW", style="Heading.TLabel")
             info["power"].pack(anchor=tk.W, pady=2)
-            info["consumption"] = ttk.Label(device_frame, text="Hourly: -- kWh | Daily: -- kWh", style="Info.TLabel")
-            info["consumption"].pack(anchor=tk.W, pady=2)
 
+            info["rate"] = ttk.Label(device_frame, text="Max Discharge / Charge Rate: -- kW", style="Info.TLabel")
+            info["rate"].pack(anchor=tk.W, pady=2)
 
-
-        # GIF pinned to the top-right corner of the LabelFrame.
-        # x=-5, y=20 nudges it just inside the border and below the title text.
-        animation_label = tk.Label(device_frame, bg="#1e1e1e", bd=0, highlightthickness=0)
-        animation_label.place(relx=1.0, rely=0.0, anchor="ne", x=-5, y=0)
+        animation_label = ttk.Label(device_frame)
+        animation_label.pack(anchor=tk.W, pady=2)
 
         self.device_frames[device_name] = {
             "frame": device_frame,
@@ -175,21 +183,48 @@ class DevicesPanel:
                 max_power_kw = device_state.get("max_power_kw") or 0.0
                 hourly_consumption_kwh = device_state.get("hourly_consumption_kwh") or 0.0
                 daily_consumption_kwh = device_state.get("daily_consumption_kwh") or 0.0
+
                 priority = device_state.get("priority", "-")
 
+                # Update labels
                 device_info["labels"]["priority"].config(text=f"Priority: {priority}")
+
+                # Status with color coding
                 if status == 'ON':
-                    status_text, status_color = "Status: ON", "#00ff88"
+                    status_text = "Status: ON"
+                    status_color = "#00ff88"  # Green
                 else:
-                    status_text, status_color = "Status: OFF", "#ff3333"
+                    status_text = "Status: OFF"
+                    status_color = "#ff3333"  # Red
                 device_info["labels"]["status"].config(text=status_text, foreground=status_color)
-                device_info["labels"]["temp"].config(text=f"Current Temp: {current_temp:.1f} °C")
-                device_info["labels"]["target"].config(text=f"Target Temp: {target_temp:.1f} °C ±{temp_margin:.1f}°C")
-                device_info["labels"]["power"].config(text=f"Power: {power_kw:.2f} kW / {max_power_kw:.2f} kW")
-                device_info["labels"]["consumption"].config(text=f"Hourly: {hourly_consumption_kwh:.3f} kWh | Daily: {daily_consumption_kwh:.3f} kWh")
-                comfort = "✅ Comfortable" if target_temp - temp_margin <= current_temp <= target_temp + temp_margin else "❌ Outside range"
+                device_info["labels"]["temp"].config(
+                    text=f"Current Temp: {current_temp:.1f} °C"
+                )
+                device_info["labels"]["target"].config(
+                    text=f"Target Temp: {target_temp:.1f} °C ±{temp_margin:.1f}°C"
+                )
+                device_info["labels"]["power"].config(
+                    text=f"Power: {power_kw:.2f} kW / {max_power_kw:.2f} kW"
+                )
+                device_info["labels"]["consumption"].config(
+                    text=f"Hourly: {hourly_consumption_kwh:.3f} kWh | Daily: {daily_consumption_kwh:.3f} kWh"
+                )
+
+                # Calculate comfort level
+                if current_temp >= target_temp - temp_margin and current_temp <= target_temp + temp_margin:
+                    comfort = "✅ Comfortable"
+                else:
+                    comfort = "❌ Outside range"
+
                 device_info["labels"]["comfort"].config(text=f"Comfort: {comfort}")
+
                 is_on = status == 'ON'
+                if is_on and not device_info['animating']:
+                    self.start_animation(device_info['animation_label'], device_name)
+                    device_info['animating'] = True
+                elif not is_on and device_info['animating']:
+                    device_info['animation_label'].config(image='')
+                    device_info['animating'] = False
 
             elif device_info["type"] == "refrigerator":
                 status = device_state.get("compressor_status", "Unknown")
@@ -200,20 +235,40 @@ class DevicesPanel:
                 max_power_kw = device_state.get("max_power_kw") or 0.0
                 hourly_consumption_kwh = device_state.get("hourly_consumption_kwh") or 0.0
                 daily_consumption_kwh = device_state.get("daily_consumption_kwh") or 0.0
+
                 priority = device_state.get("priority", "-")
 
+                # Update labels
                 device_info["labels"]["priority"].config(text=f"Priority: {priority}")
-                if status == 'RUNNING':
-                    status_text, status_color = "Compressor: ON", "#00ff88"
-                else:
-                    status_text, status_color = "Compressor: OFF", "#ff3333"
-                device_info["labels"]["status"].config(text=status_text, foreground=status_color)
-                device_info["labels"]["temp"].config(text=f"Interior Temp: {current_temp:.1f} °C")
-                device_info["labels"]["target"].config(text=f"Target Temp: {target_temp:.1f} °C ±{temp_margin:.1f}°C")
-                device_info["labels"]["power"].config(text=f"Power: {power_kw:.2f} kW / {max_power_kw:.2f} kW")
-                device_info["labels"]["consumption"].config(text=f"Hourly: {hourly_consumption_kwh:.3f} kWh | Daily: {daily_consumption_kwh:.3f} kWh")
-                is_on = status == 'RUNNING'
 
+                # Status with color coding
+                if status == 'RUNNING':
+                    status_text = "Status: ON"
+                    status_color = "#00ff88"  # Green
+                else:
+                    status_text = "Status: OFF"
+                    status_color = "#ff3333"  # Red
+                device_info["labels"]["status"].config(text=status_text, foreground=status_color)
+                device_info["labels"]["temp"].config(
+                    text=f"Interior Temp: {current_temp:.1f} °C"
+                )
+                device_info["labels"]["target"].config(
+                    text=f"Target Temp: {target_temp:.1f} °C ±{temp_margin:.1f}°C"
+                )
+                device_info["labels"]["power"].config(
+                    text=f"Power: {power_kw:.2f} kW / {max_power_kw:.2f} kW"
+                )
+                device_info["labels"]["consumption"].config(
+                    text=f"Hourly: {hourly_consumption_kwh:.3f} kWh | Daily: {daily_consumption_kwh:.3f} kWh"
+                )
+
+                is_on = status == 'RUNNING'
+                if is_on and not device_info['animating']:
+                    self.start_animation(device_info['animation_label'], device_name)
+                    device_info['animating'] = True
+                elif not is_on and device_info['animating']:
+                    device_info['animation_label'].config(image='')
+                    device_info['animating'] = False
             elif device_info["type"] == "washing_machine":
                 motor_status = device_state.get("motor_status", "Unknown")
                 pending_clothes = device_state.get("pending_clothes", 0)
@@ -222,19 +277,40 @@ class DevicesPanel:
                 max_power_kw = device_state.get("max_power_kw", 0.0)
                 hourly_consumption_kwh = device_state.get("hourly_consumption_kwh", 0.0)
                 daily_consumption_kwh = device_state.get("daily_consumption_kwh", 0.0)
+
                 priority = device_state.get("priority", "-")
 
+                # Update labels
                 device_info["labels"]["priority"].config(text=f"Priority: {priority}")
+
+                # Motor status with color coding
                 if motor_status == 'WASHING':
-                    motor_text, motor_color = "Motor: ON", "#00ff88"
+                    motor_text = "Motor: ON"
+                    motor_color = "#00ff88"  # Green
                 else:
-                    motor_text, motor_color = "Motor: OFF", "#ff3333"
+                    motor_text = "Motor: OFF"
+                    motor_color = "#ff3333"  # Red
                 device_info["labels"]["motor_status"].config(text=motor_text, foreground=motor_color)
-                device_info["labels"]["pending_clothes"].config(text=f"Pending Clothes: {pending_clothes}")
-                device_info["labels"]["wash_cycles"].config(text=f"Wash Cycles Remaining: {wash_cycles_remaining}")
-                device_info["labels"]["power"].config(text=f"Power: {power_kw:.2f} kW / {max_power_kw:.2f} kW")
-                device_info["labels"]["consumption"].config(text=f"Hourly: {hourly_consumption_kwh:.3f} kWh | Daily: {daily_consumption_kwh:.3f} kWh")
+                device_info["labels"]["pending_clothes"].config(
+                    text=f"Pending Clothes: {pending_clothes}"
+                )
+                device_info["labels"]["wash_cycles"].config(
+                    text=f"Wash Cycles Remaining: {wash_cycles_remaining}"
+                )
+                device_info["labels"]["power"].config(
+                    text=f"Power: {power_kw:.2f} kW / {max_power_kw:.2f} kW"
+                )
+                device_info["labels"]["consumption"].config(
+                    text=f"Hourly: {hourly_consumption_kwh:.3f} kWh | Daily: {daily_consumption_kwh:.3f} kWh"
+                )
+
                 is_on = motor_status == 'WASHING'
+                if is_on and not device_info['animating']:
+                    self.start_animation(device_info['animation_label'], device_name)
+                    device_info['animating'] = True
+                elif not is_on and device_info['animating']:
+                    device_info['animation_label'].config(image='')
+                    device_info['animating'] = False
 
             elif device_info["type"] == "dish_washer":
                 motor_status = device_state.get("motor_status", "Unknown")
@@ -244,65 +320,76 @@ class DevicesPanel:
                 max_power_kw = device_state.get("max_power_kw", 0.0)
                 hourly_consumption_kwh = device_state.get("hourly_consumption_kwh", 0.0)
                 daily_consumption_kwh = device_state.get("daily_consumption_kwh", 0.0)
+
                 priority = device_state.get("priority", "-")
 
+                # Update labels
                 device_info["labels"]["priority"].config(text=f"Priority: {priority}")
+
+                # Motor status with color coding
                 if motor_status == 'WASHING':
-                    motor_text, motor_color = "Motor: ON", "#00ff88"
+                    motor_text = "Motor: ON"
+                    motor_color = "#00ff88"  # Green
                 else:
-                    motor_text, motor_color = "Motor: OFF", "#ff3333"
+                    motor_text = "Motor: OFF"
+                    motor_color = "#ff3333"  # Red
                 device_info["labels"]["motor_status"].config(text=motor_text, foreground=motor_color)
-                device_info["labels"]["pending_dishes"].config(text=f"Pending Dishes: {pending_dishes}")
-                device_info["labels"]["wash_cycles"].config(text=f"Wash Cycles Remaining: {wash_cycles_remaining}")
-                device_info["labels"]["power"].config(text=f"Power: {power_kw:.2f} kW / {max_power_kw:.2f} kW")
-                device_info["labels"]["consumption"].config(text=f"Hourly: {hourly_consumption_kwh:.3f} kWh | Daily: {daily_consumption_kwh:.3f} kWh")
+                device_info["labels"]["pending_dishes"].config(
+                    text=f"Pending Dishes: {pending_dishes}"
+                )
+                device_info["labels"]["wash_cycles"].config(
+                    text=f"Wash Cycles Remaining: {wash_cycles_remaining}"
+                )
+                device_info["labels"]["power"].config(
+                    text=f"Power: {power_kw:.2f} kW / {max_power_kw:.2f} kW"
+                )
+                device_info["labels"]["consumption"].config(
+                    text=f"Hourly: {hourly_consumption_kwh:.3f} kWh | Daily: {daily_consumption_kwh:.3f} kWh"
+                )
+
                 is_on = motor_status == 'WASHING'
+                if is_on and not device_info['animating']:
+                    self.start_animation(device_info['animation_label'], device_name)
+                    device_info['animating'] = True
+                elif not is_on and device_info['animating']:
+                    device_info['animation_label'].config(image='')
+                    device_info['animating'] = False
 
             elif device_info["type"] == "battery":
-                status = device_state.get("status", "Unknown")
-                level = device_state.get("battery_level", 0.0)
-                provided_power = device_state.get("provided_power_kw", 0.0)
-                solar_charge = device_state.get("solar_charge_kw", 0.0)
-                priority = device_state.get("priority", "-")
-
-                device_info["labels"]["priority"].config(text=f"Priority: {priority}")
-
-                status_color = "#ffff00" if "solar panels" in status.lower() else ("#00ff88" if "DISCHARGING" in status else "#b0b0b0")
-                device_info["labels"]["status"].config(text=f"State: {status}", foreground=status_color)
-                device_info["labels"]["level"].config(text=f"Charge Level: {level:.1f}%")
-                device_info["labels"]["power_provided"].config(text=f"Provided to House: {provided_power:.2f} kW", foreground="#00ff88")
-                device_info["labels"]["solar_charge"].config(text=f"Solar Charge: {solar_charge:.2f} kW", foreground="#ffff00")
-                is_on = status != "IDLE"
-
-            elif device_info["type"] == "air_fryer":
-                status = device_state.get("status", "Unknown")
-                timer = device_state.get("cycle_minutes_remaining", 0)
+                status = device_state.get("status", "IDLE")
                 power_kw = device_state.get("power_kw", 0.0)
-                max_power_kw = device_state.get("max_power_kw", 0.0)
-                hourly_consumption_kwh = device_state.get("hourly_consumption_kwh", 0.0)
-                daily_consumption_kwh = device_state.get("daily_consumption_kwh", 0.0)
-                priority = device_state.get("priority", "-")
+                max_power_kw = device_state.get("max_power_kw", 2.0)
+                battery_flow = device_state.get("battery_flow_kw", power_kw)
+                charge = device_state.get("charge_kwh", 0.0)
+                capacity = device_state.get("capacity_kwh", 0.0)
+                pct = charge / capacity * 100 if capacity > 0 else 0.0
+                
+                if "CHARGING & DISCHARGING" in status: status_color = "#00ff88"
+                elif status == "CHARGING": status_color = "#00ff88"
+                elif status == "DISCHARGING": status_color = "#ffb347"
+                else: status_color = "#00d4ff" if status == "FULL" else "#b0b0b0"
+                
+                device_info["labels"]["status"].config(text=f"Status: {status}", foreground=status_color)
+                
+                flow = "IDLE"
+                if "CHARGING & DISCHARGING" in status:
+                    # In this state, battery_flow > 0 means net charge, < 0 means net discharge
+                    if battery_flow > 0.01: flow = f"NET CHARGE at {battery_flow:.2f} kW"
+                    elif battery_flow < -0.01: flow = f"NET DISCHARGE at {abs(battery_flow):.2f} kW"
+                    else: flow = "NET ZERO (Equal Chg/Dis)"
+                elif battery_flow > 0.01: flow = f"CHARGING at {battery_flow:.2f} kW"
+                elif battery_flow < -0.01: flow = f"DISCHARGING at {abs(battery_flow):.2f} kW"
+                
+                device_info["labels"]["power"].config(text=f"Battery Flow: {flow}")
+                
+                device_info["labels"]["charge"].config(text=f"Charge: {charge:.2f} / {capacity:.2f} kWh ({pct:.0f}%)")
+                device_info["labels"]["rate"].config(text=f"Max Discharge / Charge Rate: {max_power_kw:.2f} kW")
 
-                device_info["labels"]["priority"].config(text=f"Priority: {priority}")
-                if status == 'ON':
-                    status_text, status_color = "Status: ON", "#00ff88"
-                else:
-                    status_text, status_color = "Status: OFF", "#ff3333"
-                device_info["labels"]["status"].config(text=status_text, foreground=status_color)
-                device_info["labels"]["timer"].config(text=f"Remaining: {timer} min")
-                device_info["labels"]["power"].config(text=f"Power: {power_kw:.2f} kW / {max_power_kw:.2f} kW")
-                device_info["labels"]["consumption"].config(text=f"Hourly: {hourly_consumption_kwh:.3f} kWh | Daily: {daily_consumption_kwh:.3f} kWh")
-                is_on = status == 'ON'
+                is_on = 'CHARGING' in status or 'DISCHARGING' in status
+                if is_on and not device_info['animating']:
+                    self.start_animation(device_info['animation_label'], device_name)
+                    device_info['animating'] = True
+                elif not is_on and device_info['animating']:
+                    device_info['animation_label'].config(image='')
+                    device_info['animating'] = False
 
-
-
-            else:
-                continue
-
-            # Unified animation toggle
-            if is_on and not device_info['animating']:
-                device_info['animating'] = True
-                self.start_animation(device_info['animation_label'], device_name)
-            elif not is_on and device_info['animating']:
-                device_info['animation_label'].config(image='')
-                device_info['animating'] = False
