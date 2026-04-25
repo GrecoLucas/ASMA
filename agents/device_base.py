@@ -272,7 +272,7 @@ class Device(Agent):
 
     def _push_gui_device_state(self):
         """Push current device state to GUI immediately after out-of-cycle state changes."""
-        if not GUI_AVAILABLE:
+        if not GUI_AVAILABLE or self.name.startswith("b_"):
             return
         state = get_simulation_state()
         state.update_device_state(self.name, self.get_device_state_for_gui())
@@ -536,7 +536,9 @@ class Device(Agent):
                 selected_peers=selected_shedders,
                 overflow_kw=overflow_kw,
             )
-            notify_msg = Message(to=AGENTS["world"])
+            from config import AGENTS, XMPP_SERVER
+            world_jid = f"b_world@{XMPP_SERVER}" if self.name.startswith("b_") else AGENTS["world"]
+            notify_msg = Message(to=world_jid)
             notify_msg.body = json.dumps(
                 {
                     "event": "state_changed",
@@ -615,7 +617,9 @@ class Device(Agent):
 
         self._push_gui_device_state()
 
-        notify_msg = Message(to=AGENTS["world"])
+        from config import AGENTS, XMPP_SERVER
+        world_jid = f"b_world@{XMPP_SERVER}" if self.name.startswith("b_") else AGENTS["world"]
+        notify_msg = Message(to=world_jid)
         notify_msg.body = json.dumps(
             {
                 "event": "state_changed",
@@ -652,15 +656,17 @@ class Device(Agent):
 
                     self.agent.update_energy_counters(world_state)
 
-                    from config import AGENTS
+                    from config import AGENTS, XMPP_SERVER
                     device_name = self.agent.name.split("@")[0]
 
                     # Broadcast power status to peers (P2P communication)
                     await self.agent._broadcast_power_status(self, world_state)
 
+                    world_jid = f"b_world@{XMPP_SERVER}" if self.agent.name.startswith("b_") else AGENTS["world"]
+
                     # Notify world about hourly consumption
                     # WorldAgent uses the correct price for this time slot's cost calculation.
-                    consumption_msg = Message(to=AGENTS["world"])
+                    consumption_msg = Message(to=world_jid)
                     consumption_msg.body = json.dumps({
                         "event": "device_consumption",
                         "device_name": device_name,
@@ -683,7 +689,7 @@ class Device(Agent):
                                 await self.agent._start_power_negotiation(rule, self, world_state)
                                 continue
 
-                            notify_msg = Message(to=AGENTS["world"])
+                            notify_msg = Message(to=world_jid)
                             notify_msg.body = json.dumps({
                                 "event": "state_changed",
                                 "device_name": device_name,
@@ -691,7 +697,7 @@ class Device(Agent):
                             })
                             await self.send(notify_msg)
 
-                    if GUI_AVAILABLE:
+                    if GUI_AVAILABLE and not self.agent.name.startswith("b_"):
                         state = get_simulation_state()
                         device_state = self.agent.get_device_state_for_gui()
                         state.update_device_state(self.agent.name, device_state)
@@ -842,16 +848,18 @@ class Device(Agent):
     async def setup(self):
 
         from spade.template import Template
-        from config import AGENTS
+        from config import AGENTS, XMPP_SERVER
 
         # Initialize peer power status with idle defaults to avoid underestimation
         for peer_jid in self.peers:
             peer_name = self._normalize_agent_name(peer_jid)
             self.peer_power_status[peer_name] = {"power_kw": 0.0, "timestamp": 0}
 
+        world_jid = f"b_world@{XMPP_SERVER}" if self.name.startswith("b_") else AGENTS["world"]
+
         # Filtro para mensagens do Mundo
         world_template = Template()
-        world_template.sender = AGENTS["world"]
+        world_template.sender = world_jid
         self.add_behaviour(self.MonitorEnvironment(), world_template)
 
         # Filtro para mensagens P2P
