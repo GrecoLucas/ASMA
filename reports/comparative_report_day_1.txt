@@ -1,0 +1,26 @@
+==================================================
+COMPARATIVE SIMULATION REPORT - DAY 1
+==================================================
+
+1. OVERALL METRICS
+--------------------------------------------------
+Metric                 | Baseline         | Multi-Agent      | Difference
+--------------------------------------------------
+Total Energy (kWh)     |         19.630 |         19.450 |     -0.180
+Renewable Used (kWh)   |          3.660 |          3.660 |      0.000
+Total Cost (EUR)       |          1.374 |          1.244 |     -0.130
+
+2. ECONOMIC ANALYSIS
+--------------------------------------------------
+Baseline Cost (No Agent Coordination): 1.374 EUR
+Multi-Agent Cost (With Coordination):  1.244 EUR
+Savings Achieved:                      0.130 EUR (9.4%)
+
+3. DEVICE BREAKDOWN (Multi-Agent vs Baseline)
+--------------------------------------------------
+ac.livingroom       : Baseline    9.450 kWh | Multi-Agent    9.450 kWh | Diff    0.000 kWh
+dish_washer         : Baseline    1.000 kWh | Multi-Agent    1.000 kWh | Diff    0.000 kWh
+fridge              : Baseline    3.780 kWh | Multi-Agent    3.600 kWh | Diff   -0.180 kWh
+heater.livingroom   : Baseline    5.400 kWh | Multi-Agent    5.400 kWh | Diff    0.000 kWh
+
+==================================================

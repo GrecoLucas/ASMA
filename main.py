@@ -41,14 +41,20 @@ async def main():
         air_fryer, world_agent
     ]
     
-    # 2. Instantiate and start Baseline Agents
-    baseline_agents, baseline_world = await start_baseline_simulation()
+    # 2. Instantiate and start Baseline Agents (shares main world's environment)
+    baseline_agents, baseline_world = await start_baseline_simulation(main_world_agent=world_agent)
 
-    # Hook up report generation at the end of each simulated day
-    def on_day_end(day):
-        generate_comparative_report(day, world_agent, baseline_world)
-    
-    world_agent.on_day_end = on_day_end
+    # Hook up report generation at the end of each simulated day.
+    # Both worlds run independently, so whichever finishes a day last triggers the report.
+    def make_day_end_callback(main_w, baseline_w):
+        def on_day_end(day):
+            if day in main_w.daily_history and day in baseline_w.daily_history:
+                generate_comparative_report(day, main_w, baseline_w)
+        return on_day_end
+
+    day_end_cb = make_day_end_callback(world_agent, baseline_world)
+    world_agent.on_day_end = day_end_cb
+    baseline_world.on_day_end = day_end_cb
 
     print("Starting agents... (this may take a few seconds)")
     await asyncio.gather(*[agent.start(auto_register=True) for agent in agents_to_start])
