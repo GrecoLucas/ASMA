@@ -86,6 +86,7 @@ class WashingMachine(Device):
         )
 
     def update_sensors(self, world_state):
+        super().update_sensors(world_state)
         self.current_hour = world_state.get("hour")
         self.current_energy_price = world_state.get("energy_price", DEFAULT_ENERGY_PRICE)
         motor = self.actuators["motor"]

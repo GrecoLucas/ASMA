@@ -20,14 +20,18 @@ class BatteryAgent(Device):
         self.current_hour = 0
 
     def update_sensors(self, world_state):
+       super().update_sensors(world_state)
        self.current_hour = world_state.get("hour", 0)
-       self.solar_production = world_state.get("solar_production", 0.0) # Captura o sol
 
     def get_power_consumption_kw(self):
         # Se a bateria extrai do painel solar, isso conta como "consumo" do ponto de vista do World. 
         # (O World injecta o Solar_Production total, então a bateria precisa "consumir" essa parcela).
         # E se a bateria está a descarregar, ela "produz" energia para o World.
         return getattr(self, "solar_to_battery", 0.0) - self.current_discharge_kw
+
+    def get_available_power_kw(self):
+        available_kw = (self.charge_kwh * 60) / MINUTES_PER_STEP
+        return min(self.max_power_kw, available_kw)
 
     def get_provided_power_kw(self):
         return self.current_discharge_kw

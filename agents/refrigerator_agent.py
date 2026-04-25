@@ -78,6 +78,7 @@ class Refrigerator(Device):
         )
 
     def update_sensors(self, world_state):
+        super().update_sensors(world_state)
         ambient_temp = world_state.get("temperature")
         self.current_hour = world_state.get("hour")
 

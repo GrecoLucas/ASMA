@@ -69,6 +69,7 @@ class AirFryerAgent(Device):
         return AIR_FRYER_PRIORITY
 
     def update_sensors(self, world_state):
+        super().update_sensors(world_state)
         from config import MINUTES_PER_STEP
         
         # Trigger logic: Every hour (step), check for a random chance to start if idle
