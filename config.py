@@ -31,6 +31,18 @@ NEGOTIATION_LOOP_PERIOD_SEC = 1
 PRICE_MIN = 0.07   # Minimum expected electricity price (€/kWh)
 PRICE_MAX = 0.27   # Maximum expected electricity price (€/kWh)
 
+# Solar production simulation settings
+SOLAR_PRODUCTION_START_HOUR = 7
+SOLAR_PRODUCTION_END_HOUR = 19
+SOLAR_WEATHER_FACTOR_MIN = 0.3
+SOLAR_WEATHER_FACTOR_MAX = 1.0
+SOLAR_PEAK_BY_SEASON_KW = {
+    "summer": 0.8,
+    "winter": 0.5,
+    "spring": 0.7,
+    "autumn": 0.6,
+}
+
 # Global Device Defaults
 DEFAULT_PRIORITY = 3
 DEFAULT_ENERGY_PRICE = 0.12

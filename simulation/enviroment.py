@@ -5,7 +5,17 @@ import logging
 from spade.agent import Agent
 from spade.behaviour import CyclicBehaviour, PeriodicBehaviour
 from spade.message import Message
-from config import AGENTS, PASSWORD, SIMULATION_SPEED, MINUTES_PER_STEP
+from config import (
+    AGENTS,
+    PASSWORD,
+    SIMULATION_SPEED,
+    MINUTES_PER_STEP,
+    SOLAR_PRODUCTION_START_HOUR,
+    SOLAR_PRODUCTION_END_HOUR,
+    SOLAR_WEATHER_FACTOR_MIN,
+    SOLAR_WEATHER_FACTOR_MAX,
+    SOLAR_PEAK_BY_SEASON_KW,
+)
 
 # Import GUI state if available
 try:
@@ -36,10 +46,10 @@ class WorldAgent(Agent):
 
         # Base parameters for different seasons
         self.season_params = {
-            "summer": {"base_temp": 22, "temp_range": 15, "solar_peak": 3.5},
-            "winter": {"base_temp": 8, "temp_range": 12, "solar_peak": 1.8},
-            "spring": {"base_temp": 15, "temp_range": 12, "solar_peak": 2.8},
-            "autumn": {"base_temp": 12, "temp_range": 10, "solar_peak": 2.2}
+            "summer": {"base_temp": 22, "temp_range": 15},
+            "winter": {"base_temp": 8, "temp_range": 12},
+            "spring": {"base_temp": 15, "temp_range": 12},
+            "autumn": {"base_temp": 12, "temp_range": 10}
         }
 
         # Initialize current temperature
@@ -217,17 +227,20 @@ class WorldAgent(Agent):
 
     def generate_solar_production(self, hour):
         """Generate solar production based on sun patterns."""
-        params = self.season_params.get(self.season, self.season_params["summer"])
-        solar_peak = params["solar_peak"]
+        solar_peak = SOLAR_PEAK_BY_SEASON_KW.get(
+            self.season,
+            SOLAR_PEAK_BY_SEASON_KW["summer"]
+        )
 
-        # Solar production follows sun angle (6am to 6pm)
-        if 6 <= hour <= 18:
+        # Solar production follows a sun-angle curve during the configured daylight window
+        if SOLAR_PRODUCTION_START_HOUR <= hour <= SOLAR_PRODUCTION_END_HOUR:
             # Bell curve pattern with peak at noon
-            angle = (hour - 6) * math.pi / 12
+            daylight_hours = SOLAR_PRODUCTION_END_HOUR - SOLAR_PRODUCTION_START_HOUR
+            angle = (hour - SOLAR_PRODUCTION_START_HOUR) * math.pi / daylight_hours
             production = solar_peak * math.sin(angle)
 
             # Add weather variability (clouds, etc.)
-            weather_factor = random.uniform(0.7, 1.0)
+            weather_factor = random.uniform(SOLAR_WEATHER_FACTOR_MIN, SOLAR_WEATHER_FACTOR_MAX)
             production *= weather_factor
         else:
             production = 0.0
