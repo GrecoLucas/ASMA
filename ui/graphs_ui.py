@@ -164,7 +164,13 @@ class GraphsPanel:
             self.ax_pie.clear()
             self.configure_axis(self.ax_pie, "Consumption Mix (Daily)")
             labels = ['Grid', 'Battery', 'Solar']
-            sizes = [grid_cons, batt_cons, sol_cons]
+            sizes = [0,0,0]
+
+            for i, cons in enumerate([grid_cons, batt_cons, sol_cons]):
+                # Only last 24h data for pie (sum of last 24 points or less if not available)
+                recent_sum = sum(self.history[f"{labels[i].lower()}_cons"][-24:])
+                sizes[i] = recent_sum
+
             colors = [self.grid_color, self.battery_color, self.solar_color]
             
             if sum(sizes) > 0.01:
