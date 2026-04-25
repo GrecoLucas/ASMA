@@ -5,6 +5,7 @@ from simulation.enviroment import WorldAgent
 from agents import AirConditioner, Heater, Refrigerator, WashingMachine, DishWasher, AirFryerAgent
 from agents.battery_agent import BatteryAgent
 from gui import start_gui
+from simulation.baseline import start_baseline_simulation, generate_comparative_report
 
 async def main():
 
@@ -40,6 +41,15 @@ async def main():
         air_fryer, world_agent
     ]
     
+    # 2. Instantiate and start Baseline Agents
+    baseline_agents, baseline_world = await start_baseline_simulation()
+
+    # Hook up report generation at the end of each simulated day
+    def on_day_end(day):
+        generate_comparative_report(day, world_agent, baseline_world)
+    
+    world_agent.on_day_end = on_day_end
+
     print("Starting agents... (this may take a few seconds)")
     await asyncio.gather(*[agent.start(auto_register=True) for agent in agents_to_start])
     print("All agents started.")
@@ -58,6 +68,9 @@ async def main():
         await dish_washer.stop()
         await battery_agent.stop()
         await air_fryer.stop()
+        
+        for b_agent in baseline_agents:
+            await b_agent.stop()
 
 if __name__ == "__main__":
     asyncio.run(main())

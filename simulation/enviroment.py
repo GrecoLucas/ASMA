@@ -40,16 +40,18 @@ class WorldAgent(Agent):
         self.total_daily_renewable_kwh = 0.0
         self.total_daily_solar_generated_kwh = 0.0
         self.last_world_state = {}
+        self.daily_history = {}
+        self.is_baseline = False
 
         # Bug 12 fix: initialize _renewable_per_slot in __init__ instead of lazy hasattr
         self._renewable_per_slot = {}
 
         # Base parameters for different seasons
         self.season_params = {
-            "summer": {"base_temp": 22, "temp_range": 15},
-            "winter": {"base_temp": 8, "temp_range": 12},
-            "spring": {"base_temp": 15, "temp_range": 12},
-            "autumn": {"base_temp": 12, "temp_range": 10}
+            "summer": {"base_temp": 22, "temp_range": 15, "solar_peak": 1.2},
+            "winter": {"base_temp": 8, "temp_range": 12, "solar_peak": 0.8},
+            "spring": {"base_temp": 15, "temp_range": 12, "solar_peak": 1.0},
+            "autumn": {"base_temp": 12, "temp_range": 10, "solar_peak": 0.9}
         }
 
         # Initialize current temperature
@@ -58,6 +60,14 @@ class WorldAgent(Agent):
 
     def reset_daily_energy_totals(self):
         """Reset daily consumption accounting at day rollover."""
+        self.daily_history[self.day_count] = {
+            "total_daily_consumption_kwh": self.total_daily_consumption_kwh,
+            "total_daily_cost_euro": self.total_daily_cost_euro,
+            "total_daily_renewable_kwh": self.total_daily_renewable_kwh,
+            "total_daily_solar_generated_kwh": self.total_daily_solar_generated_kwh,
+            "device_daily_consumption_kwh": self.device_daily_consumption_kwh.copy()
+        }
+
         self.device_daily_consumption_kwh = {}
         self.hourly_consumption_by_slot = {}
         self.total_daily_consumption_kwh = 0.0
@@ -369,7 +379,10 @@ class WorldAgent(Agent):
                                 device: round(total, 3)
                                 for device, total in self.agent.device_daily_consumption_kwh.items()
                             }
-                            gui_state.update_world_state(merged_state)
+                            
+                            # Only update GUI if not baseline
+                            if not getattr(self.agent, "is_baseline", False):
+                                gui_state.update_world_state(merged_state)
                 except (json.JSONDecodeError, KeyError) as e:
                     # Bug 14 fix: log instead of silently ignoring errors
                     logging.debug(f"[WorldAgent] DeviceStateListener parse error: {e}")
@@ -411,7 +424,7 @@ class WorldAgent(Agent):
             )
 
             # Update GUI state
-            if GUI_AVAILABLE:
+            if GUI_AVAILABLE and not getattr(self.agent, "is_baseline", False):
                 gui_state = get_simulation_state()
                 gui_state.update_world_state(state)
 
@@ -428,8 +441,12 @@ class WorldAgent(Agent):
             if self.agent.clock_minutes >= 1440:
                 self.agent.clock_minutes = 0
 
-                self.agent.day_count += 1
                 self.agent.reset_daily_energy_totals()
+                self.agent.day_count += 1
+                
+                # Check if we should trigger report generation
+                if hasattr(self.agent, 'on_day_end') and callable(self.agent.on_day_end):
+                    self.agent.on_day_end(self.agent.day_count - 1)
 
     async def setup(self):
 
