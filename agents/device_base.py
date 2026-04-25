@@ -99,6 +99,7 @@ class Device(Agent):
         # Energy model values in kW
         self.active_power_kw = 0.0
         self.idle_power_kw = 0.0
+        self.solar_production = 0.0
 
         # Daily accounting
         self.current_day = 1
@@ -132,12 +133,18 @@ class Device(Agent):
         return DEFAULT_PRIORITY  # Default priority from config
 
     def estimate_total_power(self):
-        """Estimate current total power consumption from P2P data, own consumption,
+        """Estimate current gross power demand from all devices.
+
+        Returns the total power consumption from P2P data, own consumption,
         and pending power reservations from other agents currently negotiating.
         Uses the higher value between last known status and pending reservation for each peer.
 
+        NOTE: This returns GROSS demand — it does NOT subtract provided power
+        (battery discharge). Supply-side contributions (solar, battery, grid)
+        are accounted for in get_total_available_power() to avoid double-counting.
+
         Returns:
-            float: Estimated total power in kW
+            float: Estimated gross total power demand in kW
         """
         my_name = self._normalize_agent_name(self.name)
         
@@ -145,7 +152,6 @@ class Device(Agent):
             # Bug Fix 2: Include own reservation in total power if we are negotiating to turn ON
             my_reservation = Device._pending_power_reservations.get(my_name, 0.0)
             total = max(self.get_power_consumption_kw(), my_reservation)
-            total -= self.get_provided_power_kw()
             
             # Get all agent names we know about
             all_peers = set(self.peer_power_status.keys())
@@ -157,14 +163,13 @@ class Device(Agent):
         for peer in all_peers:
             status = self.peer_power_status.get(peer, {})
             status_p = status.get("power_kw", 0.0)
-            provided_p = status.get("provided_power_kw", 0.0)
             
             with Device._class_lock:
                 res_p = Device._pending_power_reservations.get(peer, 0.0)
             
-            # Add consumption, subtract provision
+            # max() clamps negative values (e.g. battery discharging) to 0,
+            # while correctly counting positive consumption (e.g. battery charging from solar)
             total += max(status_p, res_p)
-            total -= provided_p
             
         return total
 
@@ -226,7 +231,7 @@ class Device(Agent):
 
     def update_sensors(self, world_state):
         """Override in subclasses to map world state into device sensors."""
-        pass
+        self.solar_production = world_state.get("solar_production", 0.0)
 
     def get_power_consumption_kw(self):
         """Return current power draw in kW. Override for custom behavior."""
@@ -235,6 +240,35 @@ class Device(Agent):
     def get_provided_power_kw(self):
         """Return power provided to the system (e.g. by battery). Override in subclasses."""
         return 0.0
+
+    def get_available_power_kw(self):
+        """Return maximum power this device can provide right now. Override in subclasses."""
+        return 0.0
+
+    def get_total_available_power(self):
+        """Total power ceiling for negotiations: Grid limit + Solar + Battery discharge.
+
+        Energy priority order:
+          1. Solar powers the house first
+          2. Excess solar charges the battery
+          3. Battery supplements when solar is insufficient
+          4. Grid covers whatever remains
+
+        Returns:
+            float: Maximum power (kW) the house can draw from all sources combined.
+        """
+        from config import MAX_POWER_KW
+        solar = getattr(self, 'solar_production', 0.0)
+        
+        # Battery capacity comes from P2P broadcasts (available_power_kw),
+        # which is the same as the GUI's min(max_power_kw, charge_kwh).
+        battery_available = 0.0
+        if getattr(self, "device_type", "") == "battery":
+            battery_available = self.get_available_power_kw()
+        elif 'battery' in self.peer_power_status:
+            battery_available = self.peer_power_status['battery'].get('available_power_kw', 0.0)
+            
+        return MAX_POWER_KW + solar + battery_available
 
 
     def get_hourly_consumption_kwh(self, world_state):
@@ -299,7 +333,7 @@ class Device(Agent):
             power = kwargs.get('power_kw', 0)
             priority = kwargs.get('priority', '?')
             total = kwargs.get('total_kw', 0)
-            content = f"Requests {power:.2f}kW (Priority {priority}, Total: {total:.2f}kW)"
+            content = f"Requests {power:.2f}kW (Priority {priority}, Total: {total:.2f}kW / {self.get_total_available_power():.2f}kW)"
         elif "REPLY" in content:
             decision = kwargs.get("decision", "").lower()
             reason = kwargs.get("reason", "")
@@ -453,10 +487,10 @@ class Device(Agent):
             if reply.get("decision") == "accept"
         }
 
-        # The battery (provider) offers "extra" capacity to the grid.
-        # We sum all provided power and subtract it from the gross total before comparing to the wall limit.
-        total_provided = sum(float(r.get("provided_power_kw", 0.0)) for r in accepted_replies.values())
-        overflow_kw = max(0.0, (negotiation["estimated_total_kw"] - total_provided) - negotiation["max_power_kw"])
+        # Total available power = Grid + Solar + Battery discharge.
+        # Overflow is how much demand exceeds this ceiling.
+        total_available = self.get_total_available_power()
+        overflow_kw = max(0.0, negotiation["estimated_total_kw"] - total_available)
 
         selected_shedders = []
         commit = False
@@ -577,6 +611,7 @@ class Device(Agent):
         device_name = self.name.split("@")[0]
         current_power = self.get_power_consumption_kw()
         provided_power = self.get_provided_power_kw()
+        available_power = self.get_available_power_kw()
         
         # Use world state time or system time as fallback
         if world_state:
@@ -593,6 +628,7 @@ class Device(Agent):
                 "device_name": device_name,
                 "power_kw": round(current_power, 3),
                 "provided_power_kw": round(provided_power, 3),
+                "available_power_kw": round(available_power, 3),
                 "timestamp": timestamp
             })
             await behaviour.send(power_status_msg)
@@ -718,11 +754,13 @@ class Device(Agent):
                         device_name = data.get("device_name")
                         power_kw = data.get("power_kw", 0)
                         provided_power_kw = data.get("provided_power_kw", 0)
+                        available_power_kw = data.get("available_power_kw", 0)
                         timestamp = data.get("timestamp", 0)
  
                         self.agent.peer_power_status[device_name] = {
                             "power_kw": power_kw,
                             "provided_power_kw": provided_power_kw,
+                            "available_power_kw": available_power_kw,
                             "timestamp": timestamp
                         }
 
@@ -747,15 +785,18 @@ class Device(Agent):
                         # Locally recalculate total power instead of trusting delayed requester projection
                         projected_total_kw = self.agent.estimate_total_power()
 
+                        # Total available power = Grid + Solar + Battery discharge
+                        total_available_power = self.agent.get_total_available_power()
+
                         should_shed = (
-                            projected_total_kw > max_power_kw
+                            projected_total_kw > total_available_power
                             and shed_power_kw > 0
                             and (my_priority < req_priority or (my_priority == req_priority and my_name > requester))
                         )
-                        decision = "accept" if (projected_total_kw <= max_power_kw or should_shed) else "reject"
+                        decision = "accept" if (projected_total_kw <= total_available_power or should_shed) else "reject"
                         if should_shed:
                             reason = "shed_possible"
-                        elif projected_total_kw <= max_power_kw:
+                        elif projected_total_kw <= total_available_power:
                             reason = "within_limit"
                         elif shed_power_kw <= 0:
                             reason = "no_shed_capacity"
