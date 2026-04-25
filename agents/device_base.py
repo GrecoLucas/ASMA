@@ -321,7 +321,7 @@ class Device(Agent):
         return value
 
     def _log_p2p(self, sender, receiver, content, event=None, tx_id=None, **kwargs):
-        if not GUI_AVAILABLE:
+        if not GUI_AVAILABLE or self.name.startswith("b_"):
             return
         state = get_simulation_state()
 
