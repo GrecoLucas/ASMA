@@ -214,22 +214,22 @@ def generate_averaged_report(total_days, main_world, baseline_world):
     report = f"""{'=' * 70}
 AVERAGED COMPARATIVE SIMULATION REPORT
 {'=' * 70}
-Season: Summer  |  Days simulated: {matched_days}  |  Values: Mean ± StdDev
+Season: Summer  |  Days simulated: {matched_days}  |  Values: Mean +- StdDev
 
 1. OVERALL METRICS (per day)
 {'-' * 70}
 {'Metric':<24s} | {'Baseline':>20s} | {'Multi-Agent':>20s} | {'Difference':>12s}
 {'-' * 70}
-{'Total Energy (kWh)':<24s} | {avg_base_energy:8.3f} ± {std_base_energy:6.3f} | {avg_main_energy:8.3f} ± {std_main_energy:6.3f} | {avg_main_energy - avg_base_energy:+10.3f}
-{'Renewable Used (kWh)':<24s} | {avg_base_renew:8.3f} ± {std_base_renew:6.3f} | {avg_main_renew:8.3f} ± {std_main_renew:6.3f} | {avg_main_renew - avg_base_renew:+10.3f}
+{'Total Energy (kWh)':<24s} | {avg_base_energy:8.3f} +- {std_base_energy:6.3f} | {avg_main_energy:8.3f} +- {std_main_energy:6.3f} | {avg_main_energy - avg_base_energy:+10.3f}
+{'Renewable Used (kWh)':<24s} | {avg_base_renew:8.3f} +- {std_base_renew:6.3f} | {avg_main_renew:8.3f} +- {std_main_renew:6.3f} | {avg_main_renew - avg_base_renew:+10.3f}
 {'Solar Generated (kWh)':<24s} | {avg_base_solar:8.3f}          | {avg_main_solar:8.3f}          | {avg_main_solar - avg_base_solar:+10.3f}
-{'Total Cost (EUR)':<24s} | {avg_base_cost:8.3f} ± {std_base_cost:6.3f} | {avg_main_cost:8.3f} ± {std_main_cost:6.3f} | {avg_main_cost - avg_base_cost:+10.3f}
+{'Total Cost (EUR)':<24s} | {avg_base_cost:8.3f} +- {std_base_cost:6.3f} | {avg_main_cost:8.3f} +- {std_main_cost:6.3f} | {avg_main_cost - avg_base_cost:+10.3f}
 
 2. ECONOMIC ANALYSIS
 {'-' * 70}
-Baseline Avg Cost (No Coordination):   {avg_base_cost:.3f} ± {std_base_cost:.3f} EUR/day
-Multi-Agent Avg Cost (With Coord.):     {avg_main_cost:.3f} ± {std_main_cost:.3f} EUR/day
-Average Daily Savings:                  {avg_savings:.3f} ± {std_savings:.3f} EUR ({savings_pct:+.1f}%)
+Baseline Avg Cost (No Coordination):   {avg_base_cost:.3f} +- {std_base_cost:.3f} EUR/day
+Multi-Agent Avg Cost (With Coord.):     {avg_main_cost:.3f} +- {std_main_cost:.3f} EUR/day
+Average Daily Savings:                  {avg_savings:.3f} +- {std_savings:.3f} EUR ({savings_pct:+.1f}%)
 
 3. DEVICE BREAKDOWN — Mean daily consumption (kWh)
 {'-' * 70}
@@ -245,8 +245,8 @@ Average Daily Savings:                  {avg_savings:.3f} ± {std_savings:.3f} E
         b_avg = mean(b_vals)
         b_std = stddev(b_vals)
         diff = m_avg - b_avg
-        report += (f"{dev:20s}: Baseline {b_avg:7.3f}±{b_std:5.3f} | "
-                   f"Multi-Agent {m_avg:7.3f}±{m_std:5.3f} | "
+        report += (f"{dev:20s}: Baseline {b_avg:7.3f}+-{b_std:5.3f} | "
+                   f"Multi-Agent {m_avg:7.3f}+-{m_std:5.3f} | "
                    f"Diff {diff:+7.3f} kWh\n")
 
     report += f"\n{'=' * 70}\n"
