@@ -4,7 +4,7 @@ from config import (
     DISH_WASHER_ACCUMULATION_RATE, DISH_WASHER_PRICE_SENSITIVITY,
     DISH_WASHER_ACTIVE_POWER_KW, DISH_WASHER_IDLE_POWER_KW,
     DISH_WASHER_WAITING_BONUS_DIVIDER, DISH_WASHER_PRIORITY_THRESHOLDS,
-    DEFAULT_ENERGY_PRICE
+    DEFAULT_ENERGY_PRICE, PRICE_MIN, PRICE_MAX
 )
 
 
@@ -19,6 +19,19 @@ class DishSensorComponent:
 
     def update(self, dishes_count):
         self.pending_dishes = dishes_count
+
+
+class ReadyToWashSensorComponent:
+    """Sensor component that indicates when it's best to wash."""
+
+    def __init__(self):
+        self.ready = False
+
+    def read(self):
+        return self.ready
+
+    def update(self, is_ready):
+        self.ready = is_ready
 
 
 class DishWashingMotorComponent:
@@ -57,6 +70,7 @@ class DishWasher(Device):
         self.current_energy_price = DEFAULT_ENERGY_PRICE  # Updated each tick from world state
 
         self.add_sensor("dishes", DishSensorComponent())
+        self.add_sensor("ready_to_wash", ReadyToWashSensorComponent())
         self.add_actuator("motor", DishWashingMotorComponent())
 
         # Power profile: active kW, idle kW
@@ -65,10 +79,10 @@ class DishWasher(Device):
 
         self.add_rule(
             Rule(
-                name="Start Washing - Enough Dishes",
-                sensor_name="dishes",
-                operator=">=",
-                threshold=DISH_WASHER_THRESHOLD,
+                name="Start Washing - Smart",
+                sensor_name="ready_to_wash",
+                operator="==",
+                threshold=True,
                 actuator_name="motor",
                 command="on",
             )
@@ -121,6 +135,15 @@ class DishWasher(Device):
             if self.pending_dishes >= self.dishes_threshold:
                 self.steps_waiting += 1
 
+        # Check if it's a good time to wash (cheap energy or waited too long)
+        cheap_threshold = PRICE_MIN + (PRICE_MAX - PRICE_MIN) * 0.4
+        is_cheap_energy = self.current_energy_price <= cheap_threshold
+        ready = False
+        if self.pending_dishes >= self.dishes_threshold:
+            if is_cheap_energy or self.steps_waiting > 24: # Waited for 24 steps/hours max
+                ready = True
+
+        self.sensors["ready_to_wash"].update(ready)
         self.sensors["dishes"].update(self.pending_dishes)
 
     def calculate_priority(self, world_state=None):

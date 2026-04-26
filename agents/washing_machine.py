@@ -4,7 +4,8 @@ from config import (
     WASHING_MACHINE_PER_CYCLE, WASHING_MACHINE_ACCUMULATION_RATE,
     WASHING_MACHINE_PRICE_SENSITIVITY, WASHING_MACHINE_ACTIVE_POWER_KW,
     WASHING_MACHINE_IDLE_POWER_KW, WASHING_MACHINE_WAITING_BONUS_DIVIDER,
-    WASHING_MACHINE_PRIORITY_THRESHOLDS, DEFAULT_ENERGY_PRICE
+    WASHING_MACHINE_PRIORITY_THRESHOLDS, DEFAULT_ENERGY_PRICE,
+    PRICE_MIN, PRICE_MAX
 )
 
 
@@ -19,6 +20,19 @@ class LaundrySensorComponent:
 
     def update(self, clothes_count):
         self.pending_clothes = clothes_count
+
+
+class ReadyToWashSensorComponent:
+    """Sensor component that indicates when it's best to wash."""
+
+    def __init__(self):
+        self.ready = False
+
+    def read(self):
+        return self.ready
+
+    def update(self, is_ready):
+        self.ready = is_ready
 
 
 class WashingMotorComponent:
@@ -57,6 +71,7 @@ class WashingMachine(Device):
         self.current_energy_price = DEFAULT_ENERGY_PRICE  # Updated each tick from world state
 
         self.add_sensor("laundry", LaundrySensorComponent())
+        self.add_sensor("ready_to_wash", ReadyToWashSensorComponent())
         self.add_actuator("motor", WashingMotorComponent())
 
         # Power profile: active kW, idle kW
@@ -65,10 +80,10 @@ class WashingMachine(Device):
 
         self.add_rule(
             Rule(
-                name="Start Washing - Enough Clothes",
-                sensor_name="laundry",
-                operator=">=",
-                threshold=WASHING_MACHINE_THRESHOLD,
+                name="Start Washing - Smart",
+                sensor_name="ready_to_wash",
+                operator="==",
+                threshold=True,
                 actuator_name="motor",
                 command="on",
             )
@@ -120,6 +135,15 @@ class WashingMachine(Device):
             if self.pending_clothes >= self.clothes_threshold:
                 self.steps_waiting += 1
 
+        # Check if it's a good time to wash (cheap energy or waited too long)
+        cheap_threshold = PRICE_MIN + (PRICE_MAX - PRICE_MIN) * 0.4
+        is_cheap_energy = self.current_energy_price <= cheap_threshold
+        ready = False
+        if self.pending_clothes >= self.clothes_threshold:
+            if is_cheap_energy or self.steps_waiting > 24: # Waited for 24 hours max
+                ready = True
+
+        self.sensors["ready_to_wash"].update(ready)
         self.sensors["laundry"].update(self.pending_clothes)
 
     def calculate_priority(self, world_state=None):

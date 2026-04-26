@@ -6,7 +6,8 @@ from config import (
     MINUTES_PER_STEP, BATTERY_CAPACITY_KWH, BATTERY_MAX_POWER_KW,
     BATTERY_INITIAL_CHARGE_PERCENT, BATTERY_SOLAR_CHARGE_START_HOUR,
     BATTERY_SOLAR_CHARGE_END_HOUR, BATTERY_DISCHARGE_START_HOUR,
-    BATTERY_DISCHARGE_END_HOUR, BATTERY_PRIORITY
+    BATTERY_DISCHARGE_END_HOUR, BATTERY_PRIORITY,
+    PRICE_MIN, PRICE_MAX
 )
 
 class BatteryAgent(Device):
@@ -51,12 +52,17 @@ class BatteryAgent(Device):
         
         self.solar_to_battery = min(excess_solar_kw, max_charge_power_kw)
 
-        # 2. Descarga baseada na demanda dos agentes
+        # 2. Descarga baseada na demanda dos agentes e no preco da energia
         available_kw = (self.charge_kwh * 60) / MINUTES_PER_STEP
         
         unmet_demand_kw = max(0.0, total_demand_kw - self.solar_production)
         
-        if self.charge_kwh > 0 and unmet_demand_kw > 0.0:
+        # So descarrega se a energia estiver cara (top 50% dos precos esperados)
+        current_price = world_state.get("energy_price", 0.0)
+        expensive_threshold = PRICE_MIN + (PRICE_MAX - PRICE_MIN) * 0.5
+        is_expensive = current_price >= expensive_threshold
+
+        if self.charge_kwh > 0 and unmet_demand_kw > 0.0 and is_expensive:
             desired_discharge = min(unmet_demand_kw, self.max_power_kw)
             self.current_discharge_kw = min(desired_discharge, available_kw)
         else:

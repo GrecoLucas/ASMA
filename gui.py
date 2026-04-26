@@ -258,10 +258,12 @@ class SimulationGUI:
         battery_extra = 0.0
         battery_capacity = 0.0
         solar_gen = world.get("solar_production", 0.0)
+        device_states_for_graphs = {}
         
         device_names = self.state.get_all_devices()
         for device_name in device_names:
             device_state = self.state.get_device_state(device_name)
+            device_states_for_graphs[device_name] = device_state
             
             # Identify battery capacity extra remaining
             if device_state.get('device_type') == 'battery':
@@ -315,7 +317,14 @@ class SimulationGUI:
 
         # Update graphs
         if hasattr(self, 'graphs_panel'):
-            self.graphs_panel.update_data(world, total_power, dynamic_limit, solar_gen, battery_capacity)
+            self.graphs_panel.update_data(
+                world,
+                total_power,
+                dynamic_limit,
+                solar_gen,
+                battery_capacity,
+                device_states_for_graphs,
+            )
 
         # Schedule next update
         self.root.after(1000, self.update_display)

@@ -26,8 +26,14 @@ class GraphsPanel:
             "battery_cons": [],
             "solar_cons": [],
             "costs": [],
+            "prices": [],
             "grid_power": []
         }
+
+        self.current_day = None
+        self.hourly_turn_on_counts = {}
+        self.prev_device_on_states = {}
+        self.turn_on_device_order = []
 
         self.last_recorded_time = None
 
@@ -35,31 +41,84 @@ class GraphsPanel:
 
     def setup_graphs(self):
         # Create Matplotlib Figure
-        self.fig = Figure(figsize=(6, 8), dpi=100, facecolor=self.bg_color)
+        self.fig = Figure(figsize=(7, 10), dpi=100, facecolor=self.bg_color)
         
         # Adjust subplot parameters for a tighter fit
-        self.fig.subplots_adjust(left=0.1, right=0.95, top=0.95, bottom=0.05, hspace=0.6, wspace=0.3)
+        self.fig.subplots_adjust(left=0.08, right=0.97, top=0.96, bottom=0.05, hspace=0.7, wspace=0.3)
 
         # 1. Pie Graph (Usage)
-        self.ax_pie = self.fig.add_subplot(2, 2, 1)
+        self.ax_pie = self.fig.add_subplot(3, 2, 1)
         self.configure_axis(self.ax_pie, "Total Consumption Mix")
 
         # 2. Gauge (System Power) - We'll simulate it using a half-polar or bar
-        self.ax_gauge = self.fig.add_subplot(2, 2, 2, polar=True)
+        self.ax_gauge = self.fig.add_subplot(3, 2, 2, polar=True)
         self.configure_axis(self.ax_gauge, "System Power Gauge")
 
         # 3. Line Graph (Energy Sources)
-        self.ax_sources = self.fig.add_subplot(2, 2, 3)
+        self.ax_sources = self.fig.add_subplot(3, 2, 3)
         self.configure_axis(self.ax_sources, "Sources Over Time (kWh)")
 
         # 4. Line Graph (Cost)
-        self.ax_cost = self.fig.add_subplot(2, 2, 4)
+        self.ax_cost = self.fig.add_subplot(3, 2, 4)
         self.configure_axis(self.ax_cost, "Grid Cost Over Time (€)")
+
+        # 5. Line Graph (Energy Price)
+        self.ax_price = self.fig.add_subplot(3, 2, 5)
+        self.configure_axis(self.ax_price, "Energy Price (€/kWh) - Last 24 ticks")
+
+        # 6. Stacked Bar (Turn-on counts by hour)
+        self.ax_turnons = self.fig.add_subplot(3, 2, 6)
+        self.configure_axis(self.ax_turnons, "Device Turn-Ons by Hour")
 
         # Create Canvas
         self.canvas = FigureCanvasTkAgg(self.fig, master=self.frame)
         self.canvas.draw()
         self.canvas.get_tk_widget().pack(fill=tk.BOTH, expand=True)
+
+    def _is_device_on(self, device_name, state):
+        device_type = state.get("device_type", "")
+        if device_type == "battery":
+            return False
+
+        if "ac_status" in state:
+            return state.get("ac_status") == "ON"
+        if "heater_status" in state:
+            return state.get("heater_status") == "ON"
+        if "compressor_status" in state:
+            return state.get("compressor_status") in {"RUNNING", "ON"}
+        if "motor_status" in state:
+            return state.get("motor_status") in {"WASHING", "ON", "RUNNING"}
+        if "status" in state:
+            return state.get("status") in {"ON", "RUNNING", "COOKING", "HEATING", "WASHING"}
+
+        return state.get("power_kw", 0.0) > 0.0
+
+    def _ensure_device_counter(self, device_name):
+        if device_name not in self.hourly_turn_on_counts:
+            self.hourly_turn_on_counts[device_name] = [0] * 24
+            self.turn_on_device_order.append(device_name)
+
+    def _reset_turn_on_counters(self):
+        self.hourly_turn_on_counts = {}
+        self.prev_device_on_states = {}
+        self.turn_on_device_order = []
+
+    def _update_turn_on_tracking(self, hour, device_states):
+        for device_name, state in device_states.items():
+            is_on = self._is_device_on(device_name, state)
+            prev_state = self.prev_device_on_states.get(device_name)
+
+            # First observation only initializes state, no synthetic event.
+            if prev_state is None:
+                self.prev_device_on_states[device_name] = is_on
+                continue
+
+            if not prev_state and is_on:
+                self._ensure_device_counter(device_name)
+                hour_idx = max(0, min(23, int(hour)))
+                self.hourly_turn_on_counts[device_name][hour_idx] += 1
+
+            self.prev_device_on_states[device_name] = is_on
 
     def configure_axis(self, ax, title):
         ax.set_title(title, color=self.text_color, pad=10, fontsize=9)
@@ -124,15 +183,23 @@ class GraphsPanel:
         
         self.ax_gauge.plot([angle, angle], [0, 1], color="#2C2C2C", linewidth=3) # Changed needle to white for visibility
 
-    def update_data(self, world, total_power, max_grid_power, solar_gen=0.0, battery_capacity=0.0):
+    def update_data(self, world, total_power, max_grid_power, solar_gen=0.0, battery_capacity=0.0, device_states=None):
         hour = world.get("hour", 0)
         minute = world.get("minute", 0)
+        day = world.get("day", 1)
         time_str = f"{hour:02d}:{minute:02d}"
 
         grid_cons = world.get("hourly_grid_consumption_kwh", 0.0)
         batt_cons = world.get("hourly_battery_consumption_kwh", 0.0)
         sol_cons = world.get("hourly_solar_consumption_kwh", 0.0)
         cost = world.get("hourly_cost_euro", 0.0)
+        price = world.get("energy_price", 0.0)
+
+        if self.current_day is None:
+            self.current_day = day
+        elif day != self.current_day:
+            self.current_day = day
+            self._reset_turn_on_counters()
 
         # Update History only once per simulated minute (to avoid spamming points when time stalls)
         time_changed = False
@@ -142,6 +209,10 @@ class GraphsPanel:
             self.history["battery_cons"].append(batt_cons)
             self.history["solar_cons"].append(sol_cons)
             self.history["costs"].append(cost)
+            self.history["prices"].append(price)
+
+            if device_states:
+                self._update_turn_on_tracking(hour, device_states)
             
             # Keep history manageable (e.g., last 60 points)
             if len(self.history["times"]) > 60:
@@ -182,20 +253,60 @@ class GraphsPanel:
 
             # Redraw Sources Line Graph
             self.ax_sources.clear()
-            self.configure_axis(self.ax_sources, "Sources (Last 60 ticks)")
+            self.configure_axis(self.ax_sources, "Sources (Last 24 ticks)")
             if len(self.history["times"]) > 0:
-                x_vals = range(len(self.history["times"]))
-                self.ax_sources.plot(x_vals, self.history["grid_cons"], label='Grid', color=self.grid_color)
-                self.ax_sources.plot(x_vals, self.history["battery_cons"], label='Battery', color=self.battery_color)
-                self.ax_sources.plot(x_vals, self.history["solar_cons"], label='Solar', color=self.solar_color)
+                recent_ticks = 24
+                recent_grid = self.history["grid_cons"][-recent_ticks:]
+                recent_battery = self.history["battery_cons"][-recent_ticks:]
+                recent_solar = self.history["solar_cons"][-recent_ticks:]
+                x_vals = range(len(recent_grid))
+                self.ax_sources.plot(x_vals, recent_grid, label='Grid', color=self.grid_color)
+                self.ax_sources.plot(x_vals, recent_battery, label='Battery', color=self.battery_color)
+                self.ax_sources.plot(x_vals, recent_solar, label='Solar', color=self.solar_color)
                 self.ax_sources.legend(loc='upper left', fontsize=7, facecolor=self.bg_color, edgecolor='none', labelcolor=self.text_color)
 
             # Redraw Cost Line Graph
             self.ax_cost.clear()
-            self.configure_axis(self.ax_cost, "Cost (€) (Last 60 ticks)")
+            self.configure_axis(self.ax_cost, "Cost (€) (Last 24 ticks)")
             if len(self.history["times"]) > 0:
-                x_vals = range(len(self.history["times"]))
-                self.ax_cost.plot(x_vals, self.history["costs"], label='Cost', color="#ffcc00")
+                recent_ticks = 24
+                recent_costs = self.history["costs"][-recent_ticks:]
+                x_vals = range(len(recent_costs))
+                self.ax_cost.plot(x_vals, recent_costs, label='Cost', color="#ffcc00")
+
+            # Redraw Energy Price Line Graph
+            self.ax_price.clear()
+            self.configure_axis(self.ax_price, "Energy Price (€/kWh) - Last 24 ticks")
+            if len(self.history["times"]) > 0:
+                recent_ticks = 24
+                recent_prices = self.history["prices"][-recent_ticks:]
+                x_vals = range(len(recent_prices))
+                self.ax_price.plot(x_vals, recent_prices, label='Price', color="#66ccff")
+                self.ax_price.legend(loc='upper left', fontsize=7, facecolor=self.bg_color, edgecolor='none', labelcolor=self.text_color)
+
+            # Redraw Device Turn-On Stacked Bar Chart
+            self.ax_turnons.clear()
+            self.configure_axis(self.ax_turnons, "Device Turn-Ons by Hour")
+            hours = np.arange(24)
+            bottom = np.zeros(24)
+            if self.turn_on_device_order:
+                color_map = matplotlib.colormaps.get_cmap("tab20")
+                for idx, device_name in enumerate(self.turn_on_device_order):
+                    counts = np.array(self.hourly_turn_on_counts.get(device_name, [0] * 24))
+                    if counts.sum() <= 0:
+                        continue
+                    color = color_map(idx % 20)
+                    self.ax_turnons.bar(hours, counts, bottom=bottom, width=0.8, label=device_name, color=color, alpha=0.85)
+                    bottom += counts
+
+                self.ax_turnons.legend(loc='upper right', fontsize=6, ncol=2, facecolor=self.bg_color, edgecolor='none', labelcolor=self.text_color)
+            else:
+                self.ax_turnons.text(11.5, 0.5, "No turn-on events yet", ha='center', va='center', color=self.text_color)
+
+            self.ax_turnons.set_xticks(range(0, 24, 2))
+            self.ax_turnons.set_xlim(-0.5, 23.5)
+            self.ax_turnons.set_xlabel("Hour of day", color=self.text_color, fontsize=8)
+            self.ax_turnons.set_ylabel("Turn-on count", color=self.text_color, fontsize=8)
 
         if gauge_changed or time_changed:
             # Redraw Gauge
