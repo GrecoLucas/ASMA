@@ -11,10 +11,11 @@ from config import (
 )
 
 class BatteryAgent(Device):
-    def __init__(self, jid, password, capacity_kwh=BATTERY_CAPACITY_KWH, max_power_kw=BATTERY_MAX_POWER_KW, peers=None):
+    def __init__(self, jid, password, capacity_kwh=BATTERY_CAPACITY_KWH, max_power_kw=BATTERY_MAX_POWER_KW, peers=None, enable_price_optimization=False):
         super().__init__(jid, password, device_type="battery", peers=peers)
         self.capacity_kwh = capacity_kwh
         self.max_power_kw = max_power_kw
+        self.enable_price_optimization = enable_price_optimization
         self.charge_kwh = capacity_kwh * BATTERY_INITIAL_CHARGE_PERCENT
         self.current_discharge_kw = 0.0
         self.current_charge_kw = 0.0
@@ -52,17 +53,19 @@ class BatteryAgent(Device):
         
         self.solar_to_battery = min(excess_solar_kw, max_charge_power_kw)
 
-        # 2. Descarga baseada na demanda dos agentes e no preco da energia
+        # 2. Descarga baseada na demanda dos agentes
         available_kw = (self.charge_kwh * 60) / MINUTES_PER_STEP
         
         unmet_demand_kw = max(0.0, total_demand_kw - self.solar_production)
-        
-        # So descarrega se a energia estiver cara (top 50% dos precos esperados)
-        current_price = world_state.get("energy_price", 0.0)
-        expensive_threshold = PRICE_MIN + (PRICE_MAX - PRICE_MIN) * 0.5
-        is_expensive = current_price >= expensive_threshold
 
-        if self.charge_kwh > 0 and unmet_demand_kw > 0.0 and is_expensive:
+        should_discharge = self.charge_kwh > 0 and unmet_demand_kw > 0.0
+        if should_discharge and self.enable_price_optimization:
+            # Smart mode: discharge only in expensive hours.
+            current_price = world_state.get("energy_price", 0.0)
+            expensive_threshold = PRICE_MIN + (PRICE_MAX - PRICE_MIN) * 0.5
+            should_discharge = current_price >= expensive_threshold
+
+        if should_discharge:
             desired_discharge = min(unmet_demand_kw, self.max_power_kw)
             self.current_discharge_kw = min(desired_discharge, available_kw)
         else:

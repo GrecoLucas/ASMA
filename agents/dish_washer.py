@@ -56,9 +56,10 @@ class DishWashingMotorComponent:
 class DishWasher(Device):
     """Dish washer device agent that washes dishes based on dish accumulation."""
 
-    def __init__(self, jid, password, dishes_threshold=DISH_WASHER_THRESHOLD, peers=None):
+    def __init__(self, jid, password, dishes_threshold=DISH_WASHER_THRESHOLD, peers=None, enable_price_optimization=False):
         super().__init__(jid, password, device_type="dish_washer", peers=peers)
         self.dishes_threshold = dishes_threshold
+        self.enable_price_optimization = enable_price_optimization
         self.pending_dishes = 0
         self.current_hour = None
         self.cycle_steps_remaining = 0  # Steps remaining in current wash cycle
@@ -135,13 +136,17 @@ class DishWasher(Device):
             if self.pending_dishes >= self.dishes_threshold:
                 self.steps_waiting += 1
 
-        # Check if it's a good time to wash (cheap energy or waited too long)
-        cheap_threshold = PRICE_MIN + (PRICE_MAX - PRICE_MIN) * 0.4
-        is_cheap_energy = self.current_energy_price <= cheap_threshold
-        ready = False
-        if self.pending_dishes >= self.dishes_threshold:
-            if is_cheap_energy or self.steps_waiting > 24: # Waited for 24 steps/hours max
-                ready = True
+        if self.enable_price_optimization:
+            # Smart mode: prefer cheap hours, but force execution after long wait.
+            cheap_threshold = PRICE_MIN + (PRICE_MAX - PRICE_MIN) * 0.4
+            is_cheap_energy = self.current_energy_price <= cheap_threshold
+            ready = False
+            if self.pending_dishes >= self.dishes_threshold:
+                if is_cheap_energy or self.steps_waiting > 24: # Waited for 24 steps/hours max
+                    ready = True
+        else:
+            # Baseline mode: start as soon as threshold is reached.
+            ready = self.pending_dishes >= self.dishes_threshold
 
         self.sensors["ready_to_wash"].update(ready)
         self.sensors["dishes"].update(self.pending_dishes)
@@ -178,7 +183,7 @@ class DishWasher(Device):
 
         raw_priority = base_priority #+ waiting_bonus
         # Apply price modifier: boost in cheap hours, penalize in expensive hours
-        price_modifier = self._calculate_price_modifier()
+        price_modifier = self._calculate_price_modifier() if self.enable_price_optimization else 0
         # Cap at priority 5, floor at 0
         return max(0, min(5, raw_priority + price_modifier))
 
