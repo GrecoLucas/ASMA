@@ -4,7 +4,7 @@ from config import (
     DISH_WASHER_ACCUMULATION_RATE, DISH_WASHER_PRICE_SENSITIVITY,
     DISH_WASHER_ACTIVE_POWER_KW, DISH_WASHER_IDLE_POWER_KW,
     DISH_WASHER_WAITING_BONUS_DIVIDER, DISH_WASHER_PRIORITY_THRESHOLDS,
-    DEFAULT_ENERGY_PRICE
+    DEFAULT_ENERGY_PRICE, PRICE_MIN, PRICE_MAX
 )
 
 
@@ -19,6 +19,19 @@ class DishSensorComponent:
 
     def update(self, dishes_count):
         self.pending_dishes = dishes_count
+
+
+class ReadyToWashSensorComponent:
+    """Sensor component that indicates when it's best to wash."""
+
+    def __init__(self):
+        self.ready = False
+
+    def read(self):
+        return self.ready
+
+    def update(self, is_ready):
+        self.ready = is_ready
 
 
 class DishWashingMotorComponent:
@@ -43,9 +56,10 @@ class DishWashingMotorComponent:
 class DishWasher(Device):
     """Dish washer device agent that washes dishes based on dish accumulation."""
 
-    def __init__(self, jid, password, dishes_threshold=DISH_WASHER_THRESHOLD, peers=None):
+    def __init__(self, jid, password, dishes_threshold=DISH_WASHER_THRESHOLD, peers=None, enable_price_optimization=False):
         super().__init__(jid, password, device_type="dish_washer", peers=peers)
         self.dishes_threshold = dishes_threshold
+        self.enable_price_optimization = enable_price_optimization
         self.pending_dishes = 0
         self.current_hour = None
         self.cycle_steps_remaining = 0  # Steps remaining in current wash cycle
@@ -57,6 +71,7 @@ class DishWasher(Device):
         self.current_energy_price = DEFAULT_ENERGY_PRICE  # Updated each tick from world state
 
         self.add_sensor("dishes", DishSensorComponent())
+        self.add_sensor("ready_to_wash", ReadyToWashSensorComponent())
         self.add_actuator("motor", DishWashingMotorComponent())
 
         # Power profile: active kW, idle kW
@@ -65,10 +80,10 @@ class DishWasher(Device):
 
         self.add_rule(
             Rule(
-                name="Start Washing - Enough Dishes",
-                sensor_name="dishes",
-                operator=">=",
-                threshold=DISH_WASHER_THRESHOLD,
+                name="Start Washing - Smart",
+                sensor_name="ready_to_wash",
+                operator="==",
+                threshold=True,
                 actuator_name="motor",
                 command="on",
             )
@@ -121,6 +136,19 @@ class DishWasher(Device):
             if self.pending_dishes >= self.dishes_threshold:
                 self.steps_waiting += 1
 
+        if self.enable_price_optimization:
+            # Smart mode: prefer cheap hours, but force execution after long wait.
+            cheap_threshold = PRICE_MIN + (PRICE_MAX - PRICE_MIN) * 0.4
+            is_cheap_energy = self.current_energy_price <= cheap_threshold
+            ready = False
+            if self.pending_dishes >= self.dishes_threshold:
+                if is_cheap_energy or self.steps_waiting > 24: # Waited for 24 steps/hours max
+                    ready = True
+        else:
+            # Baseline mode: start as soon as threshold is reached.
+            ready = self.pending_dishes >= self.dishes_threshold
+
+        self.sensors["ready_to_wash"].update(ready)
         self.sensors["dishes"].update(self.pending_dishes)
 
     def calculate_priority(self, world_state=None):
@@ -155,7 +183,7 @@ class DishWasher(Device):
 
         raw_priority = base_priority #+ waiting_bonus
         # Apply price modifier: boost in cheap hours, penalize in expensive hours
-        price_modifier = self._calculate_price_modifier()
+        price_modifier = self._calculate_price_modifier() if self.enable_price_optimization else 0
         # Cap at priority 5, floor at 0
         return max(0, min(5, raw_priority + price_modifier))
 
