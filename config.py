@@ -19,7 +19,7 @@ AGENTS = {
 }
 
 # Simulation 
-SIMULATION_SPEED = 2
+SIMULATION_SPEED = 1
 MINUTES_PER_STEP = 60
 
 # Distributed P2P negotiation settings

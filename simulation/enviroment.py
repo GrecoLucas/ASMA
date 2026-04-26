@@ -85,26 +85,33 @@ class WorldAgent(Agent):
         """Check if a device name refers to a battery agent (main or baseline)."""
         return device_name in ("battery", "b_batt")
 
-    def register_device_consumption(self, device_name, day, hour, minute, consumption_kwh, energy_price=None):
+    def register_device_consumption(self, device_name, day, hour, minute, consumption_kwh, energy_price=None, grid_charge_kwh=0.0):
         """Register step consumption from a device, de-duplicated by (day, hour, minute, device).
-
-        Bug 7 fix: energy_price is now passed in from the device's own world_state snapshot,
-        ensuring the correct price for this time slot is used instead of last_world_state's
-        potentially stale price.
+        
+        grid_charge_kwh: Power specifically drawn from the grid (e.g. for battery arbitrage) 
+        that should NOT be offset by solar.
         """
         if day != self.day_count:
             return
 
         slot_key = (day, hour, minute)
         slot_data = self.hourly_consumption_by_slot.setdefault(slot_key, {})
+        
+        # Track grid-only consumption separately
+        if not hasattr(self, '_grid_charge_by_slot'):
+            self._grid_charge_by_slot = {}
+        slot_grid_charges = self._grid_charge_by_slot.setdefault(slot_key, {})
 
         if device_name in slot_data:
             return
 
         slot_data[device_name] = consumption_kwh
+        if grid_charge_kwh > 0:
+            slot_grid_charges[device_name] = grid_charge_kwh
         
         # Only add actual device consumption to the total (ignore renewable generation like solar or battery discharge)
-        if consumption_kwh > 0 and not self._is_battery(device_name):
+        # But include battery CHARGING consumption (positive consumption_kwh)
+        if consumption_kwh > 0:
             self.device_daily_consumption_kwh[device_name] = (
                 self.device_daily_consumption_kwh.get(device_name, 0.0) + consumption_kwh
             )
@@ -131,6 +138,8 @@ class WorldAgent(Agent):
         battery_provided = 0.0
         battery_consumed = 0.0
 
+        grid_only_charge = sum(getattr(self, '_grid_charge_by_slot', {}).get(slot_key, {}).values())
+ 
         for device_name, consumption_kwh in slot_data.items():
             if consumption_kwh < 0:
                 # Negative = energy production (solar or battery discharge)
@@ -141,7 +150,9 @@ class WorldAgent(Agent):
             elif consumption_kwh > 0:
                 # Positive = energy consumption by actual devices
                 if self._is_battery(device_name):
-                    battery_consumed += consumption_kwh # e.g. charging from solar
+                    # For battery, total consumption includes solar_charge and grid_charge
+                    # We subtract grid_only_charge to find what is eligible for solar
+                    battery_consumed += max(0.0, consumption_kwh - getattr(self, '_grid_charge_by_slot', {}).get(slot_key, {}).get(device_name, 0.0))
                 else:
                     house_consumption += consumption_kwh
 
@@ -157,8 +168,8 @@ class WorldAgent(Agent):
         battery_to_house = min(battery_provided, house_remaining)
         house_remaining = max(0.0, house_remaining - battery_to_house)
 
-        # 4. Grid covers only what the house still needs (rejecting battery overdraws)
-        net_grid_consumption = house_remaining
+        # 4. Grid covers house needs, any battery charging not met by solar, AND grid-only charges
+        net_grid_consumption = house_remaining + max(0.0, battery_consumed - solar_to_battery) + grid_only_charge
         
         renewable_used_this_slot = solar_to_house + solar_to_battery
 
@@ -351,6 +362,7 @@ class WorldAgent(Agent):
                         consumption_kwh = float(data.get("consumption_kwh", 0.0))
                         # Bug 7 fix: read the energy_price sent by the device for this slot
                         energy_price = data.get("energy_price")
+                        grid_charge_kwh = data.get("grid_charge_kwh", 0.0)
                         self.agent.register_device_consumption(
                             device_name=device_name,
                             day=day,
@@ -358,6 +370,7 @@ class WorldAgent(Agent):
                             minute=minute,
                             consumption_kwh=consumption_kwh,
                             energy_price=energy_price,
+                            grid_charge_kwh=grid_charge_kwh,
                         )
 
                         if GUI_AVAILABLE and self.agent.last_world_state:

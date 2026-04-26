@@ -1,28 +1,28 @@
 ==================================================
-COMPARATIVE SIMULATION REPORT - DAY 2
+COMPARATIVE SIMULATION REPORT - DAY 8
 ==================================================
 
 1. OVERALL METRICS
 --------------------------------------------------
 Metric                 | Baseline         | Multi-Agent      | Difference
 --------------------------------------------------
-Total Energy (kWh)     |         23.020 |         24.520 |      1.500
-Renewable Used (kWh)   |          8.420 |          8.420 |      0.000
-Total Cost (EUR)       |          1.827 |          1.180 |     -0.648
+Total Energy (kWh)     |         24.730 |         29.730 |      5.000
+Renewable Used (kWh)   |          9.620 |          9.120 |     -0.500
+Total Cost (EUR)       |          1.634 |          1.522 |     -0.112
 
 2. ECONOMIC ANALYSIS
 --------------------------------------------------
-Baseline Cost (No Agent Coordination): 1.827 EUR
-Multi-Agent Cost (With Coordination):  1.180 EUR
-Savings Achieved:                      0.648 EUR (35.4%)
+Baseline Cost (No Agent Coordination): 1.634 EUR
+Multi-Agent Cost (With Coordination):  1.522 EUR
+Savings Achieved:                      0.112 EUR (6.9%)
 
 3. DEVICE BREAKDOWN (Multi-Agent vs Baseline)
 --------------------------------------------------
 ac.livingroom       : Baseline    9.450 kWh | Multi-Agent    9.450 kWh | Diff    0.000 kWh
-battery             : Baseline    3.880 kWh | Multi-Agent    5.880 kWh | Diff    2.000 kWh
+battery             : Baseline    4.240 kWh | Multi-Agent    9.740 kWh | Diff    5.500 kWh
 dish_washer         : Baseline    1.000 kWh | Multi-Agent    0.500 kWh | Diff   -0.500 kWh
 fridge              : Baseline    4.140 kWh | Multi-Agent    4.140 kWh | Diff    0.000 kWh
-heater.livingroom   : Baseline    4.050 kWh | Multi-Agent    4.050 kWh | Diff    0.000 kWh
+heater.livingroom   : Baseline    5.400 kWh | Multi-Agent    5.400 kWh | Diff    0.000 kWh
 washing_machine     : Baseline    0.500 kWh | Multi-Agent    0.500 kWh | Diff    0.000 kWh
 
 ==================================================

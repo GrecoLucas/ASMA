@@ -29,7 +29,7 @@ class BatteryAgent(Device):
         # Se a bateria extrai do painel solar, isso conta como "consumo" do ponto de vista do World. 
         # (O World injecta o Solar_Production total, então a bateria precisa "consumir" essa parcela).
         # E se a bateria está a descarregar, ela "produz" energia para o World.
-        return getattr(self, "solar_to_battery", 0.0) - self.current_discharge_kw
+        return getattr(self, "solar_to_battery", 0.0) + self.current_charge_kw - self.current_discharge_kw
 
     def get_available_power_kw(self):
         available_kw = (self.charge_kwh * 60) / MINUTES_PER_STEP
@@ -39,30 +39,43 @@ class BatteryAgent(Device):
         return self.current_discharge_kw
 
     def update_energy_counters(self, world_state):
-        self.current_charge_kw = 0.0 # Nunca carrega da rede (Grid = 0)
+        self.current_charge_kw = 0.0
         self.current_discharge_kw = 0.0
 
-        # Calculate total demand from other devices
         total_demand_kw = sum(p.get("power_kw", 0.0) for p in self.peer_power_status.values())
 
-        # 1. Carregamento Solar (Only use excess solar)
+        # 1. Solar charging — only excess solar, up to max charge rate
         excess_solar_kw = max(0.0, self.solar_production - total_demand_kw)
-        
         available_capacity_kwh = self.capacity_kwh - self.charge_kwh
         max_charge_power_kw = min(self.max_power_kw, available_capacity_kwh * (60.0 / MINUTES_PER_STEP))
-        
         self.solar_to_battery = min(excess_solar_kw, max_charge_power_kw)
 
-        # 2. Descarga baseada na demanda dos agentes
-        available_kw = (self.charge_kwh * 60) / MINUTES_PER_STEP
-        
-        unmet_demand_kw = max(0.0, total_demand_kw - self.solar_production)
+        # 2. Grid charging — only allowed up to remaining charge rate headroom
+        #    solar_charge_kw + grid_charge_kw <= max_power_kw (the max charge rate)
+        remaining_charge_headroom_kw = max(0.0, max_charge_power_kw - self.solar_to_battery)
 
+        current_price_eur = world_state.get("energy_price", 0.0)
+        if self.enable_price_optimization:
+            cheap_threshold = PRICE_MIN + (PRICE_MAX - PRICE_MIN) * 0.2
+            unmet_demand_kw = max(0.0, total_demand_kw - self.solar_production)
+            is_discharging = self.charge_kwh > 0 and unmet_demand_kw > 0.0
+
+            if (current_price_eur <= cheap_threshold
+                    and self.charge_kwh < self.capacity_kwh
+                    and not is_discharging):
+                self.current_charge_kw = remaining_charge_headroom_kw  # capped by headroom
+            else:
+                self.current_charge_kw = 0.0
+
+        # 3. Discharge based on unmet demand
+        available_kw = (self.charge_kwh * 60) / MINUTES_PER_STEP
+        unmet_demand_kw = max(0.0, total_demand_kw - self.solar_production)
         should_discharge = self.charge_kwh > 0 and unmet_demand_kw > 0.0
-        should_discharge = self.charge_kwh > 0 and unmet_demand_kw > 0.0
-        # Battery always discharges when there's unmet demand.
-        # Economic optimization comes from deferrable devices shifting to cheap
-        # hours, while the battery smooths out demand regardless of price.
+
+        if self.enable_price_optimization and should_discharge:
+            if (current_price_eur < (PRICE_MAX - PRICE_MIN) * 0.6 + PRICE_MIN
+                    and self.charge_kwh > self.capacity_kwh * 0.9):
+                should_discharge = False
 
         if should_discharge:
             desired_discharge = min(unmet_demand_kw, self.max_power_kw)
@@ -70,10 +83,13 @@ class BatteryAgent(Device):
         else:
             self.current_discharge_kw = 0.0
 
-        # Atualização física da carga
-        net_flow = self.solar_to_battery - self.current_discharge_kw
+        # 4. Physical charge update
+        net_flow = self.solar_to_battery + self.current_charge_kw - self.current_discharge_kw
         self.charge_kwh += net_flow * (MINUTES_PER_STEP / 60.0)
         self.charge_kwh = max(0.0, min(self.capacity_kwh, self.charge_kwh))
+
+        # 5. Track grid charge in kWh for WorldAgent accounting
+        self.current_grid_charge_kwh = round(self.current_charge_kw * (MINUTES_PER_STEP / 60.0), 4)
 
         super().update_energy_counters(world_state)
 
@@ -91,6 +107,8 @@ class BatteryAgent(Device):
             "provided_power_kw": round(self.current_discharge_kw, 3),
             "priority": BATTERY_PRIORITY,
         }
+
+
 
     class BatteryP2P(Device.PeerCommunicationBehaviour):
         """Rotina P2P da bateria: armazena consumption dos peers e responde a requests com capacidade disponivel."""
@@ -126,9 +144,6 @@ class BatteryAgent(Device):
     async def setup(self):
         # Call base setup to initialize peer status and standard behaviors
         await super().setup()
-
-        # Overwrite/Add specific battery behaviors
-        # Note: MonitorEnvironment is already added by super().setup() with world_template
         
         # We add the specific BatteryP2P behavior for battery-specific logic
         t_p2p = Template()

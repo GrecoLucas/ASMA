@@ -31,9 +31,7 @@ class GraphsPanel:
         }
 
         self.current_day = None
-        self.hourly_turn_on_counts = {}
-        self.prev_device_on_states = {}
-        self.turn_on_device_order = []
+        self.device_power_history = {} # {device_name: [power_values]}
 
         self.last_recorded_time = None
 
@@ -66,59 +64,17 @@ class GraphsPanel:
         self.ax_price = self.fig.add_subplot(3, 2, 5)
         self.configure_axis(self.ax_price, "Energy Price (€/kWh) - Last 24 ticks")
 
-        # 6. Stacked Bar (Turn-on counts by hour)
-        self.ax_turnons = self.fig.add_subplot(3, 2, 6)
-        self.configure_axis(self.ax_turnons, "Device Turn-Ons by Hour")
+        # 6. Line Graph (Device Usage)
+        self.ax_usage = self.fig.add_subplot(3, 2, 6)
+        self.configure_axis(self.ax_usage, "Device Power (kW) - Last 24 ticks")
 
         # Create Canvas
         self.canvas = FigureCanvasTkAgg(self.fig, master=self.frame)
         self.canvas.draw()
         self.canvas.get_tk_widget().pack(fill=tk.BOTH, expand=True)
 
-    def _is_device_on(self, device_name, state):
-        device_type = state.get("device_type", "")
-        if device_type == "battery":
-            return False
-
-        if "ac_status" in state:
-            return state.get("ac_status") == "ON"
-        if "heater_status" in state:
-            return state.get("heater_status") == "ON"
-        if "compressor_status" in state:
-            return state.get("compressor_status") in {"RUNNING", "ON"}
-        if "motor_status" in state:
-            return state.get("motor_status") in {"WASHING", "ON", "RUNNING"}
-        if "status" in state:
-            return state.get("status") in {"ON", "RUNNING", "COOKING", "HEATING", "WASHING"}
-
-        return state.get("power_kw", 0.0) > 0.0
-
-    def _ensure_device_counter(self, device_name):
-        if device_name not in self.hourly_turn_on_counts:
-            self.hourly_turn_on_counts[device_name] = [0] * 24
-            self.turn_on_device_order.append(device_name)
-
-    def _reset_turn_on_counters(self):
-        self.hourly_turn_on_counts = {}
-        self.prev_device_on_states = {}
-        self.turn_on_device_order = []
-
-    def _update_turn_on_tracking(self, hour, device_states):
-        for device_name, state in device_states.items():
-            is_on = self._is_device_on(device_name, state)
-            prev_state = self.prev_device_on_states.get(device_name)
-
-            # First observation only initializes state, no synthetic event.
-            if prev_state is None:
-                self.prev_device_on_states[device_name] = is_on
-                continue
-
-            if not prev_state and is_on:
-                self._ensure_device_counter(device_name)
-                hour_idx = max(0, min(23, int(hour)))
-                self.hourly_turn_on_counts[device_name][hour_idx] += 1
-
-            self.prev_device_on_states[device_name] = is_on
+    def _reset_device_history(self):
+        self.device_power_history = {}
 
     def configure_axis(self, ax, title):
         ax.set_title(title, color=self.text_color, pad=10, fontsize=9)
@@ -199,7 +155,7 @@ class GraphsPanel:
             self.current_day = day
         elif day != self.current_day:
             self.current_day = day
-            self._reset_turn_on_counters()
+            self._reset_device_history()
 
         # Update History only once per simulated minute (to avoid spamming points when time stalls)
         time_changed = False
@@ -212,7 +168,21 @@ class GraphsPanel:
             self.history["prices"].append(price)
 
             if device_states:
-                self._update_turn_on_tracking(hour, device_states)
+                for dev_name, state in device_states.items():
+                    if dev_name not in self.device_power_history:
+                        self.device_power_history[dev_name] = []
+                    
+                    p = state.get("power_kw", 0.0)
+                    if state.get("device_type") == "battery":
+                        # Net battery usage (charge - discharge)
+                        p = p - state.get("provided_power_kw", 0.0)
+                    
+                    self.device_power_history[dev_name].append(p)
+                
+                # Truncate all device histories to match main history
+                for dev_name in self.device_power_history:
+                    if len(self.device_power_history[dev_name]) > 60:
+                        self.device_power_history[dev_name] = self.device_power_history[dev_name][-60:]
             
             # Keep history manageable (e.g., last 60 points)
             if len(self.history["times"]) > 60:
@@ -284,29 +254,25 @@ class GraphsPanel:
                 self.ax_price.plot(x_vals, recent_prices, label='Price', color="#66ccff")
                 self.ax_price.legend(loc='upper left', fontsize=7, facecolor=self.bg_color, edgecolor='none', labelcolor=self.text_color)
 
-            # Redraw Device Turn-On Stacked Bar Chart
-            self.ax_turnons.clear()
-            self.configure_axis(self.ax_turnons, "Device Turn-Ons by Hour")
-            hours = np.arange(24)
-            bottom = np.zeros(24)
-            if self.turn_on_device_order:
-                color_map = matplotlib.colormaps.get_cmap("tab20")
-                for idx, device_name in enumerate(self.turn_on_device_order):
-                    counts = np.array(self.hourly_turn_on_counts.get(device_name, [0] * 24))
-                    if counts.sum() <= 0:
-                        continue
-                    color = color_map(idx % 20)
-                    self.ax_turnons.bar(hours, counts, bottom=bottom, width=0.8, label=device_name, color=color, alpha=0.85)
-                    bottom += counts
-
-                self.ax_turnons.legend(loc='upper right', fontsize=6, ncol=2, facecolor=self.bg_color, edgecolor='none', labelcolor=self.text_color)
+            # Redraw Device Power Usage Line Graph
+            self.ax_usage.clear()
+            self.configure_axis(self.ax_usage, "Device Power Usage (kW)")
+            if self.device_power_history:
+                recent_ticks = 24
+                color_map = matplotlib.colormaps.get_cmap("tab10")
+                for idx, (dev_name, power_vals) in enumerate(self.device_power_history.items()):
+                    recent_vals = power_vals[-recent_ticks:]
+                    x_vals = range(len(recent_vals))
+                    color = color_map(idx % 10)
+                    label = dev_name.split('@')[0]
+                    self.ax_usage.plot(x_vals, recent_vals, label=label, color=color, alpha=0.8, linewidth=1.5)
+                
+                self.ax_usage.legend(loc='upper right', fontsize=6, ncol=2, facecolor=self.bg_color, edgecolor='none', labelcolor=self.text_color)
             else:
-                self.ax_turnons.text(11.5, 0.5, "No turn-on events yet", ha='center', va='center', color=self.text_color)
-
-            self.ax_turnons.set_xticks(range(0, 24, 2))
-            self.ax_turnons.set_xlim(-0.5, 23.5)
-            self.ax_turnons.set_xlabel("Hour of day", color=self.text_color, fontsize=8)
-            self.ax_turnons.set_ylabel("Turn-on count", color=self.text_color, fontsize=8)
+                self.ax_usage.text(0.5, 0.5, "No device data", ha='center', va='center', color=self.text_color)
+            
+            self.ax_usage.set_xlabel("Time (ticks)", color=self.text_color, fontsize=8)
+            self.ax_usage.set_ylabel("kW", color=self.text_color, fontsize=8)
 
         if gauge_changed or time_changed:
             # Redraw Gauge

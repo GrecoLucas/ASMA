@@ -106,6 +106,7 @@ class Device(Agent):
         self.current_day = 1
         self.hourly_consumption_kwh = 0.0
         self.daily_consumption_kwh = 0.0
+        self.last_world_state = None
 
         # Unique but deterministic PRNG per device to prevent constant-jitter sync issues
         # Using device_type instead of name ensures Baseline and MAS get the EXACT same jitter
@@ -246,7 +247,9 @@ class Device(Agent):
 
     def update_sensors(self, world_state):
         """Override in subclasses to map world state into device sensors."""
+        self.last_world_state = world_state
         self.solar_production = world_state.get("solar_production", 0.0)
+        self.current_energy_price = world_state.get("energy_price", DEFAULT_ENERGY_PRICE)
 
     def get_power_consumption_kw(self):
         """Return current power draw in kW. Override for custom behavior."""
@@ -732,8 +735,7 @@ class Device(Agent):
 
                     # Notify world about hourly consumption
                     # WorldAgent uses the correct price for this time slot's cost calculation.
-                    consumption_msg = Message(to=world_jid)
-                    consumption_msg.body = json.dumps({
+                    msg_data = {
                         "event": "device_consumption",
                         "device_name": device_name,
                         "hour": world_state.get("hour"),
@@ -742,7 +744,14 @@ class Device(Agent):
                         "energy_price": world_state.get("energy_price", DEFAULT_ENERGY_PRICE),
                         "power_kw": self.agent.get_power_consumption_kw(),
                         "consumption_kwh": self.agent.hourly_consumption_kwh,
-                    })
+                    }
+                    
+                    # Optional: handle grid-only charging (e.g. for battery arbitrage)
+                    if hasattr(self.agent, "current_grid_charge_kwh"):
+                        msg_data["grid_charge_kwh"] = self.agent.current_grid_charge_kwh
+                    
+                    consumption_msg = Message(to=world_jid)
+                    consumption_msg.body = json.dumps(msg_data)
                     await self.send(consumption_msg)
 
                     # Notify world when a rule changed state
