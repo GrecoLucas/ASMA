@@ -34,13 +34,13 @@ PRICE_MAX = 0.27   # Maximum expected electricity price (€/kWh)
 # Solar production simulation settings
 SOLAR_PRODUCTION_START_HOUR = 7
 SOLAR_PRODUCTION_END_HOUR = 19
-SOLAR_WEATHER_FACTOR_MIN = 0.3
+SOLAR_WEATHER_FACTOR_MIN = 0.4
 SOLAR_WEATHER_FACTOR_MAX = 1.0
 SOLAR_PEAK_BY_SEASON_KW = {
-    "summer": 0.8,
-    "winter": 0.5,
-    "spring": 0.7,
-    "autumn": 0.6,
+    "summer": 1.2,
+    "winter": 0.8,
+    "spring": 1.0,
+    "autumn": 0.9,
 }
 
 # Global Device Defaults

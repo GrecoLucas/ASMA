@@ -29,6 +29,7 @@ class WorldAgent(Agent):
         super().__init__(jid, password)
         self.season = season.lower()
         self.receivers = receivers or []
+        self.rng = random.Random(42)  # Fixed seed for reproducible generation
         self.clock_minutes = 0
         self.day_count = 1
         self.active_devices = {}  # Track active devices and their effects
@@ -226,7 +227,7 @@ class WorldAgent(Agent):
         self.current_temperature += (target_temp - self.current_temperature) * transition_rate
 
         # Add small random variation for realistic weather fluctuations (±0.5°C)
-        variation = random.uniform(-0.5, 0.5)
+        variation = self.rng.uniform(-0.5, 0.5)
         self.current_temperature += variation
 
         return round(self.current_temperature, 1)
@@ -246,7 +247,7 @@ class WorldAgent(Agent):
             production = solar_peak * math.sin(angle)
 
             # Add weather variability (clouds, etc.)
-            weather_factor = random.uniform(SOLAR_WEATHER_FACTOR_MIN, SOLAR_WEATHER_FACTOR_MAX)
+            weather_factor = self.rng.uniform(SOLAR_WEATHER_FACTOR_MIN, SOLAR_WEATHER_FACTOR_MAX)
             production *= weather_factor
         else:
             production = 0.0
@@ -270,7 +271,7 @@ class WorldAgent(Agent):
         price = base_price * peak_multiplier
 
         # Add market variation
-        variation = random.uniform(0.9, 1.1)
+        variation = self.rng.uniform(0.9, 1.1)
         price *= variation
 
         return round(price, 3)
@@ -316,18 +317,18 @@ class WorldAgent(Agent):
     def apply_device_effects(self):
         """Apply temperature effects from active devices."""
         # AC cooling effect
-        if self.active_devices.get("ac.livingroom") == "ON":
+        if self.active_devices.get("ac.livingroom") == "ON" or self.active_devices.get("b_ac") == "ON":
             # AC cools the environment gradually, reduced to step scale
             self.current_temperature -= 0.8 * (MINUTES_PER_STEP / 60.0)
 
         # Heater warming effect
-        if self.active_devices.get("heater.livingroom") == "ON":
+        if self.active_devices.get("heater.livingroom") == "ON" or self.active_devices.get("b_heater") == "ON":
             # Heater warms the environment gradually, reduced to step scale
             self.current_temperature += 0.8 * (MINUTES_PER_STEP / 60.0)
 
         # Fridge cooling effect (minor, mostly contained)
-        if self.active_devices.get("fridge") == "ON":
-            self.current_temperature += 0.1 * (MINUTES_PER_STEP / 60.0)
+        #if self.active_devices.get("fridge") == "ON":
+            #self.current_temperature += 0.1 * (MINUTES_PER_STEP / 60.0)
 
     class DeviceStateListener(CyclicBehaviour):
         """Listen for device state change messages."""

@@ -38,19 +38,17 @@ async def start_baseline_simulation():
     air_fryer_jid = BASELINE_AGENTS["air_fryer"]
     world_jid = BASELINE_AGENTS["world"]
 
-
-    device_peers = [battery_jid]
-    battery_peers = [ac_jid, heater_jid, fridge_jid, wm_jid, dw_jid, air_fryer_jid]
+    enable_price_opt = False  # Baseline does not optimize for price
 
     jid_list = [ac_jid, heater_jid, fridge_jid, wm_jid, dw_jid, battery_jid, air_fryer_jid]
 
-    ac_livingroom = AirConditioner(ac_jid, PASSWORD, target_temp=21, temp_margin=2, peers=device_peers)
-    heater_livingroom = Heater(heater_jid, PASSWORD, target_temp=21, temp_margin=2, peers=device_peers)
-    fridge = Refrigerator(fridge_jid, PASSWORD, target_temp=4, temp_margin=1, peers=device_peers)
-    washingmachine = WashingMachine(wm_jid, PASSWORD, peers=device_peers)
-    dish_washer = DishWasher(dw_jid, PASSWORD, peers=device_peers)
-    battery_agent = BatteryAgent(battery_jid, PASSWORD, peers=battery_peers)
-    air_fryer = AirFryerAgent(air_fryer_jid, PASSWORD, peers=device_peers)
+    ac_livingroom = AirConditioner(ac_jid, PASSWORD, target_temp=21, temp_margin=2, peers=[battery_jid])
+    heater_livingroom = Heater(heater_jid, PASSWORD, target_temp=21, temp_margin=2, peers=[battery_jid])
+    fridge = Refrigerator(fridge_jid, PASSWORD, target_temp=4, temp_margin=1, peers=[battery_jid])
+    washingmachine = WashingMachine(wm_jid, PASSWORD, peers=[battery_jid], enable_price_optimization=enable_price_opt)
+    dish_washer = DishWasher(dw_jid, PASSWORD, peers=[battery_jid], enable_price_optimization=enable_price_opt)
+    battery_agent = BatteryAgent(battery_jid, PASSWORD, capacity_kwh=20.0, max_power_kw=2.0, peers=[], enable_price_optimization=enable_price_opt)
+    air_fryer = AirFryerAgent(air_fryer_jid, PASSWORD, peers=[battery_jid])
     
     world_agent = WorldAgent(world_jid, PASSWORD, season="summer", receivers=jid_list)
     world_agent.is_baseline = True
@@ -169,11 +167,10 @@ def generate_averaged_report(total_days, main_world, baseline_world):
         base_solar_gen.append(b.get("total_daily_solar_generated_kwh", 0.0))
 
         # Per-device breakdown
-        for dev, kwh in m.get("device_daily_consumption_kwh", {}).items():
-            main_dev_totals.setdefault(dev, []).append(kwh)
-        for dev, kwh in b.get("device_daily_consumption_kwh", {}).items():
-            mapped = B_TO_MAIN.get(dev, dev)
-            base_dev_totals.setdefault(mapped, []).append(kwh)
+        for dev in B_TO_MAIN.values():
+            main_dev_totals.setdefault(dev, []).append(m.get("device_daily_consumption_kwh", {}).get(dev, 0.0))
+        for dev, mapped in B_TO_MAIN.items():
+            base_dev_totals.setdefault(mapped, []).append(b.get("device_daily_consumption_kwh", {}).get(dev, 0.0))
 
     if matched_days == 0:
         print("[REPORT] No matched days found — cannot generate averaged report.")

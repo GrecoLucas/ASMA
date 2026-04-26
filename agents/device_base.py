@@ -5,6 +5,7 @@ import logging
 import threading
 import asyncio
 import random
+import zlib
 from itertools import combinations
 from spade.agent import Agent
 from spade.behaviour import CyclicBehaviour, PeriodicBehaviour
@@ -106,6 +107,11 @@ class Device(Agent):
         self.hourly_consumption_kwh = 0.0
         self.daily_consumption_kwh = 0.0
 
+        # Unique but deterministic PRNG per device to prevent constant-jitter sync issues
+        # Using device_type instead of name ensures Baseline and MAS get the EXACT same jitter
+        seed_val = zlib.adler32(self.device_type.encode('utf-8'))
+        self.rng = random.Random(seed_val)
+
     def add_sensor(self, sensor_name, sensor_object):
         self.sensors[sensor_name] = sensor_object
 
@@ -153,9 +159,15 @@ class Device(Agent):
             my_reservation = Device._pending_power_reservations.get(my_name, 0.0)
             total = max(self.get_power_consumption_kw(), my_reservation)
             
-            # Get all agent names we know about
+            # Get all agent names we know about from direct communication
             all_peers = set(self.peer_power_status.keys())
-            all_peers.update(Device._pending_power_reservations.keys())
+            
+            # Only add pending reservations if they belong to our configured peers
+            # This prevents cross-talk when multiple simulation instances (like baseline) share the class
+            expected_peer_names = {self._normalize_agent_name(p) for p in self.peers}
+            for pending_peer in Device._pending_power_reservations.keys():
+                if pending_peer in expected_peer_names:
+                    all_peers.add(pending_peer)
             
         if my_name in all_peers:
             all_peers.remove(my_name)
@@ -200,6 +212,9 @@ class Device(Agent):
             if condition_met and not rule.last_triggered:
                 if rule.command == "on" and self.shed_timeout > 0:
                     continue  # Under shedding penalty, cannot turn on right now
+
+                if rule.command == "off" and self.shed_timeout > 0:
+                    continue  # Don't fire off rules during shed — device is already off
 
                 if rule.command == "on" and self.peers:
                     # In distributed mode, defer ON until negotiation COMMIT.
@@ -388,7 +403,9 @@ class Device(Agent):
             Device._pending_power_reservations[requester] = self.active_power_kw
 
         # Introduction of Jitter to break synchronization of agents starting simultaneously
-        await asyncio.sleep(random.uniform(0.1, NEGOTIATION_JITTER_MAX))
+        # Uses device-specific deterministic PRNG so each agent has unique but reproducible jitter
+        random_factor = self.rng.uniform(0.1, NEGOTIATION_JITTER_MAX)
+        await asyncio.sleep(random_factor)
 
         # With Bug Fix 2, estimate_total_power() now includes our own pending reservation.
         estimated_total = self.estimate_total_power()
@@ -557,6 +574,14 @@ class Device(Agent):
         if commit:
             rule.negotiation_failures = 0
             self.actuate(rule.actuator_name, "on")
+            # Reset all "off" rules so they can fire normally when the
+            # turn-off condition is later met.  Without this, a previous
+            # shedding cycle may have left last_triggered=True on the off
+            # rule, preventing it from ever firing and leaving the motor
+            # stuck ON permanently.
+            for r in self.rules:
+                if r.command == "off":
+                    r.last_triggered = False
             # Bug Fix 3: Broadcast power status immediately so peers see the new load
             await self._broadcast_power_status(behaviour)
             self._push_gui_device_state()
@@ -648,7 +673,12 @@ class Device(Agent):
         for rule in self.rules:
             if rule.command == "off" and (primary_actuator is None or rule.actuator_name == primary_actuator):
                 self.actuate(rule.actuator_name, rule.command)
-                rule.last_triggered = True
+                # NOTE: Do NOT set rule.last_triggered = True here.
+                # Shedding is an external forced action, not a rule-driven state change.
+                # Setting last_triggered = True corrupts the rule state machine: when
+                # the device later resumes and needs to turn off naturally (e.g. items
+                # drop below threshold), the off rule would see last_triggered=True and
+                # skip firing, leaving the motor stuck ON permanently.
                 break
 
         self._push_gui_device_state()

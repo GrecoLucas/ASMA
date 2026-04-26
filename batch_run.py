@@ -37,6 +37,88 @@ from agents import AirConditioner, Heater, Refrigerator, WashingMachine, DishWas
 from agents.battery_agent import BatteryAgent
 from simulation.baseline import start_baseline_simulation, generate_averaged_report, BASELINE_AGENTS
 
+async def multi_agent_simulation():
+    # Instantiate Device Agents with peers=[] so they don't negotiate
+    ac_jid = AGENTS["ac_livingroom"]
+    heater_jid = AGENTS["heater_livingroom"]
+    fridge_jid = AGENTS["fridge"]
+    whashing_machine_jid = AGENTS["washing_machine"]
+    dish_washer_jid = AGENTS["dish_washer"]
+    battery_jid = AGENTS["battery"]
+    air_fryer_jid = AGENTS["air_fryer"]
+
+    price_opt = True
+
+    jid_list = [ac_jid, heater_jid, fridge_jid, whashing_machine_jid, dish_washer_jid, battery_jid, air_fryer_jid]
+
+    ac_livingroom = AirConditioner(ac_jid, PASSWORD, target_temp=21, temp_margin=2, peers=[jid for jid in jid_list if jid != ac_jid])
+    heater_livingroom = Heater(heater_jid, PASSWORD, target_temp=21, temp_margin=2, peers=[jid for jid in jid_list if jid != heater_jid])
+    fridge = Refrigerator(fridge_jid, PASSWORD, target_temp=4, temp_margin=1, peers=[jid for jid in jid_list if jid != fridge_jid])
+    washingmachine = WashingMachine(
+        whashing_machine_jid,
+        PASSWORD,
+        peers=[jid for jid in jid_list if jid != whashing_machine_jid],
+        enable_price_optimization=price_opt,
+    )
+    dish_washer = DishWasher(
+        dish_washer_jid,
+        PASSWORD,
+        peers=[jid for jid in jid_list if jid != dish_washer_jid],
+        enable_price_optimization=price_opt,
+    )
+    battery_agent = BatteryAgent(
+        battery_jid,
+        PASSWORD,
+        capacity_kwh=20.0,
+        max_power_kw=2.0,
+        peers=[jid for jid in jid_list if jid != battery_jid],
+        enable_price_optimization=price_opt,
+    )
+    air_fryer = AirFryerAgent(air_fryer_jid, PASSWORD, peers=[jid for jid in jid_list if jid != air_fryer_jid])
+    
+    world_agent = WorldAgent(AGENTS["world"], PASSWORD, season="summer", receivers=jid_list)
+    world_agent.is_baseline = False
+
+    agents_to_start = [
+        ac_livingroom, heater_livingroom, fridge, 
+        washingmachine, dish_washer, battery_agent, 
+        air_fryer, world_agent
+    ]
+    
+    return agents_to_start, world_agent
+
+async def baseline_simulation():
+        # Instantiate Device Agents with peers=[] so they don't negotiate
+    ac_jid = BASELINE_AGENTS["ac_livingroom"]
+    heater_jid = BASELINE_AGENTS["heater_livingroom"]
+    fridge_jid = BASELINE_AGENTS["fridge"]
+    wm_jid = BASELINE_AGENTS["washing_machine"]
+    dw_jid = BASELINE_AGENTS["dish_washer"]
+    battery_jid = BASELINE_AGENTS["battery"]
+    air_fryer_jid = BASELINE_AGENTS["air_fryer"]
+    world_jid = BASELINE_AGENTS["world"]
+
+    enable_price_opt = False  # Baseline does not optimize for price
+
+    jid_list = [ac_jid, heater_jid, fridge_jid, wm_jid, dw_jid, battery_jid, air_fryer_jid]
+
+    ac_livingroom = AirConditioner(ac_jid, PASSWORD, target_temp=21, temp_margin=2, peers=[battery_jid])
+    heater_livingroom = Heater(heater_jid, PASSWORD, target_temp=21, temp_margin=2, peers=[battery_jid])
+    fridge = Refrigerator(fridge_jid, PASSWORD, target_temp=4, temp_margin=1, peers=[battery_jid])
+    washingmachine = WashingMachine(wm_jid, PASSWORD, peers=[battery_jid], enable_price_optimization=enable_price_opt)
+    dish_washer = DishWasher(dw_jid, PASSWORD, peers=[battery_jid], enable_price_optimization=enable_price_opt)
+    battery_agent = BatteryAgent(battery_jid, PASSWORD, capacity_kwh=20.0, max_power_kw=2.0, peers=[], enable_price_optimization=enable_price_opt)
+    air_fryer = AirFryerAgent(air_fryer_jid, PASSWORD, peers=[battery_jid])
+    
+    world_agent = WorldAgent(world_jid, PASSWORD, season="summer", receivers=jid_list)
+    world_agent.is_baseline = True
+
+    agents_to_start = [
+        ac_livingroom, heater_livingroom, fridge, 
+        washingmachine, dish_washer, battery_agent, 
+        air_fryer, world_agent
+    ]
+    return agents_to_start, world_agent  
 
 async def run_batch(target_days: int):
     print(f"=" * 60)
@@ -45,42 +127,15 @@ async def run_batch(target_days: int):
     print(f"=" * 60)
     start_time = time.time()
 
-    # ── 1. Multi-Agent system ──
-    ac_jid = AGENTS["ac_livingroom"]
-    heater_jid = AGENTS["heater_livingroom"]
-    fridge_jid = AGENTS["fridge"]
-    wm_jid = AGENTS["washing_machine"]
-    dw_jid = AGENTS["dish_washer"]
-    battery_jid = AGENTS["battery"]
-    air_fryer_jid = AGENTS["air_fryer"]
-
-    jid_list = [ac_jid, heater_jid, fridge_jid, wm_jid, dw_jid, battery_jid, air_fryer_jid]
-
-    ac = AirConditioner(ac_jid, PASSWORD, target_temp=21, temp_margin=2,
-                        peers=[j for j in jid_list if j != ac_jid])
-    heater = Heater(heater_jid, PASSWORD, target_temp=21, temp_margin=2,
-                    peers=[j for j in jid_list if j != heater_jid])
-    fridge = Refrigerator(fridge_jid, PASSWORD, target_temp=4, temp_margin=1,
-                          peers=[j for j in jid_list if j != fridge_jid])
-    wm = WashingMachine(wm_jid, PASSWORD,
-                        peers=[j for j in jid_list if j != wm_jid])
-    dw = DishWasher(dw_jid, PASSWORD,
-                    peers=[j for j in jid_list if j != dw_jid])
-    battery = BatteryAgent(battery_jid, PASSWORD, capacity_kwh=20.0, max_power_kw=2.0,
-                           peers=[j for j in jid_list if j != battery_jid])
-    af = AirFryerAgent(air_fryer_jid, PASSWORD,
-                       peers=[j for j in jid_list if j != air_fryer_jid])
-
-    world = WorldAgent(AGENTS["world"], PASSWORD, season="summer", receivers=jid_list)
-
-    main_agents = [ac, heater, fridge, wm, dw, battery, af, world]
+    # ── 1. Multi-Agent system ──Stil
+    main_agents, world = await multi_agent_simulation()
 
     # ── 2. Baseline system ──
-    baseline_agents, baseline_world = await start_baseline_simulation()
+    baseline_agents, baseline_world = await baseline_simulation()
 
     # ── 3. Start all agents ──
     print("Starting agents...")
-    await asyncio.gather(*[a.start(auto_register=True) for a in main_agents])
+    await asyncio.gather(*[a.start(auto_register=True) for a in main_agents + baseline_agents])
     print(f"All agents started. Running {target_days} simulated days...\n")
 
     # ── 4. Monitor progress ──

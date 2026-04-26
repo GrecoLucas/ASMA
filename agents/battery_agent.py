@@ -59,11 +59,10 @@ class BatteryAgent(Device):
         unmet_demand_kw = max(0.0, total_demand_kw - self.solar_production)
 
         should_discharge = self.charge_kwh > 0 and unmet_demand_kw > 0.0
-        if should_discharge and self.enable_price_optimization:
-            # Smart mode: discharge only in expensive hours.
-            current_price = world_state.get("energy_price", 0.0)
-            expensive_threshold = PRICE_MIN + (PRICE_MAX - PRICE_MIN) * 0.5
-            should_discharge = current_price >= expensive_threshold
+        should_discharge = self.charge_kwh > 0 and unmet_demand_kw > 0.0
+        # Battery always discharges when there's unmet demand.
+        # Economic optimization comes from deferrable devices shifting to cheap
+        # hours, while the battery smooths out demand regardless of price.
 
         if should_discharge:
             desired_discharge = min(unmet_demand_kw, self.max_power_kw)

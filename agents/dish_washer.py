@@ -127,7 +127,12 @@ class DishWasher(Device):
             # Machine is idle (or forcibly shed).
 
             if self.shed_timeout <= 0:
-                self.pending_dishes += self.accumulation_rate
+                # Only accumulate if below threshold OR if not doing price optimization.
+                # This prevents runaway backlog while waiting for cheap energy:
+                # without this cap, items pile up during the wait and require many
+                # more wash cycles, consuming far more energy than the price saving.
+                if not self.enable_price_optimization or self.pending_dishes < self.dishes_threshold:
+                    self.pending_dishes += self.accumulation_rate
 
             if self.shed_timeout <= 0:
                 self.cycle_steps_remaining = 0
