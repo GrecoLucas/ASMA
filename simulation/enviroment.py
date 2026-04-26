@@ -80,6 +80,10 @@ class WorldAgent(Agent):
         if hasattr(self, '_solar_per_slot'):
             self._solar_per_slot.clear()
 
+    def _is_battery(self, device_name):
+        """Check if a device name refers to a battery agent (main or baseline)."""
+        return device_name in ("battery", "b_batt")
+
     def register_device_consumption(self, device_name, day, hour, minute, consumption_kwh, energy_price=None):
         """Register step consumption from a device, de-duplicated by (day, hour, minute, device).
 
@@ -99,21 +103,13 @@ class WorldAgent(Agent):
         slot_data[device_name] = consumption_kwh
         
         # Only add actual device consumption to the total (ignore renewable generation like solar or battery discharge)
-        if consumption_kwh > 0 and device_name != "battery":
+        if consumption_kwh > 0 and not self._is_battery(device_name):
             self.device_daily_consumption_kwh[device_name] = (
                 self.device_daily_consumption_kwh.get(device_name, 0.0) + consumption_kwh
             )
             self.total_daily_consumption_kwh += consumption_kwh
 
-        # Bug 7 & 15 fix: we will calculate cost correctly in _calculate_renewable_usage_for_slot
-        # to ensure renewable/battery offset is accounted for before charging the user.
-        if consumption_kwh > 0:
-            if energy_price is not None:
-                pass # Price logic moved below
-            elif self.last_world_state:
-                pass
-
-        self.last_hour_consumption_kwh = round(sum(v for k, v in slot_data.items() if v > 0 and k != "battery"), 3)
+        self.last_hour_consumption_kwh = round(sum(v for k, v in slot_data.items() if v > 0 and not self._is_battery(k)), 3)
         self.last_hour_grid_consumption_kwh = getattr(self, '_last_grid_cons', 0.0)
         self.last_hour_battery_consumption_kwh = getattr(self, '_last_battery_cons', 0.0)
         self.last_hour_cost_euro = getattr(self, '_last_hour_cost', 0.0)
@@ -137,13 +133,13 @@ class WorldAgent(Agent):
         for device_name, consumption_kwh in slot_data.items():
             if consumption_kwh < 0:
                 # Negative = energy production (solar or battery discharge)
-                if device_name == "battery":
+                if self._is_battery(device_name):
                     battery_provided += abs(consumption_kwh)
                 else: # mostly solar and others
                     renewable_available += abs(consumption_kwh)
             elif consumption_kwh > 0:
                 # Positive = energy consumption by actual devices
-                if device_name == "battery":
+                if self._is_battery(device_name):
                     battery_consumed += consumption_kwh # e.g. charging from solar
                 else:
                     house_consumption += consumption_kwh
@@ -411,8 +407,9 @@ class WorldAgent(Agent):
             self.agent.last_world_state = state.copy()
 
             # Inject solar production into the consumption tracker
-            float_hour = state["hour"] + state["minute"] / 60.0
-            solar_power_kw = self.agent.generate_solar_production(float_hour)
+            # Reuse the value already generated in generate_world_state() to avoid
+            # a second random draw that would track different solar than what's broadcast.
+            solar_power_kw = state["solar_production"]
             # Register it as negative consumption, since it produces energy
             self.agent.register_device_consumption(
                 device_name="solar",

@@ -74,7 +74,11 @@ class AirFryerAgent(Device):
         
         # Trigger logic: Every hour (step), check for a random chance to start if idle
         if self.cycle_minutes_remaining == 0:
-            if random.random() < AIR_FRYER_CHANCE_PER_HOUR:
+            day = world_state.get("day", 0)
+            hour = world_state.get("hour", 0)
+            minute = world_state.get("minute", 0)
+            rng = random.Random(hash((day, hour, minute, "air_fryer")))
+            if rng.random() < AIR_FRYER_CHANCE_PER_HOUR:
                 self.cycle_minutes_remaining = AIR_FRYER_CYCLE_DURATION_MINUTES
 
         # Timer logic: Subtract the actual simulated minutes passed

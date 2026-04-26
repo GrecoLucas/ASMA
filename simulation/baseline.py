@@ -132,3 +132,133 @@ Savings Achieved:                      {savings:.3f} EUR ({savings_pct:.1f}%)
         f.write(report_content)
         
     print(f"\n[REPORT] Comparative report for Day {day} saved to {report_path}\n")
+
+
+def generate_averaged_report(total_days, main_world, baseline_world):
+    """Generate a statistical comparison report averaged over all simulated days."""
+    import math
+    os.makedirs("reports", exist_ok=True)
+    report_path = "reports/averaged_comparative_report.txt"
+
+    # Collect daily values from both worlds
+    main_costs, base_costs = [], []
+    main_energy, base_energy = [], []
+    main_renew, base_renew = [], []
+    main_solar_gen, base_solar_gen = [], []
+    main_dev_totals = {}  # {device_name: [day1_kwh, day2_kwh, ...]}
+    base_dev_totals = {}
+
+    matched_days = 0
+    for day in range(1, total_days + 1):
+        m = main_world.daily_history.get(day)
+        b = baseline_world.daily_history.get(day)
+        if not m or not b:
+            continue
+        matched_days += 1
+
+        main_costs.append(m.get("total_daily_cost_euro", 0.0))
+        base_costs.append(b.get("total_daily_cost_euro", 0.0))
+
+        main_energy.append(m.get("total_daily_consumption_kwh", 0.0))
+        base_energy.append(b.get("total_daily_consumption_kwh", 0.0))
+
+        main_renew.append(m.get("total_daily_renewable_kwh", 0.0))
+        base_renew.append(b.get("total_daily_renewable_kwh", 0.0))
+
+        main_solar_gen.append(m.get("total_daily_solar_generated_kwh", 0.0))
+        base_solar_gen.append(b.get("total_daily_solar_generated_kwh", 0.0))
+
+        # Per-device breakdown
+        for dev, kwh in m.get("device_daily_consumption_kwh", {}).items():
+            main_dev_totals.setdefault(dev, []).append(kwh)
+        for dev, kwh in b.get("device_daily_consumption_kwh", {}).items():
+            mapped = B_TO_MAIN.get(dev, dev)
+            base_dev_totals.setdefault(mapped, []).append(kwh)
+
+    if matched_days == 0:
+        print("[REPORT] No matched days found — cannot generate averaged report.")
+        return
+
+    def mean(lst):
+        return sum(lst) / len(lst) if lst else 0.0
+
+    def stddev(lst):
+        if len(lst) < 2:
+            return 0.0
+        m = mean(lst)
+        return math.sqrt(sum((x - m) ** 2 for x in lst) / (len(lst) - 1))
+
+    # Compute averaged metrics
+    avg_main_cost = mean(main_costs)
+    avg_base_cost = mean(base_costs)
+    std_main_cost = stddev(main_costs)
+    std_base_cost = stddev(base_costs)
+
+    avg_main_energy = mean(main_energy)
+    avg_base_energy = mean(base_energy)
+    std_main_energy = stddev(main_energy)
+    std_base_energy = stddev(base_energy)
+
+    avg_main_renew = mean(main_renew)
+    avg_base_renew = mean(base_renew)
+    std_main_renew = stddev(main_renew)
+    std_base_renew = stddev(base_renew)
+
+    avg_main_solar = mean(main_solar_gen)
+    avg_base_solar = mean(base_solar_gen)
+
+    avg_savings = avg_base_cost - avg_main_cost
+    savings_pct = (avg_savings / avg_base_cost * 100) if avg_base_cost > 0 else 0.0
+
+    # Per-day savings for std dev of savings
+    day_savings = [b - m for b, m in zip(base_costs, main_costs)]
+    std_savings = stddev(day_savings)
+
+    report = f"""{'=' * 70}
+AVERAGED COMPARATIVE SIMULATION REPORT
+{'=' * 70}
+Season: Summer  |  Days simulated: {matched_days}  |  Values: Mean ± StdDev
+
+1. OVERALL METRICS (per day)
+{'-' * 70}
+{'Metric':<24s} | {'Baseline':>20s} | {'Multi-Agent':>20s} | {'Difference':>12s}
+{'-' * 70}
+{'Total Energy (kWh)':<24s} | {avg_base_energy:8.3f} ± {std_base_energy:6.3f} | {avg_main_energy:8.3f} ± {std_main_energy:6.3f} | {avg_main_energy - avg_base_energy:+10.3f}
+{'Renewable Used (kWh)':<24s} | {avg_base_renew:8.3f} ± {std_base_renew:6.3f} | {avg_main_renew:8.3f} ± {std_main_renew:6.3f} | {avg_main_renew - avg_base_renew:+10.3f}
+{'Solar Generated (kWh)':<24s} | {avg_base_solar:8.3f}          | {avg_main_solar:8.3f}          | {avg_main_solar - avg_base_solar:+10.3f}
+{'Total Cost (EUR)':<24s} | {avg_base_cost:8.3f} ± {std_base_cost:6.3f} | {avg_main_cost:8.3f} ± {std_main_cost:6.3f} | {avg_main_cost - avg_base_cost:+10.3f}
+
+2. ECONOMIC ANALYSIS
+{'-' * 70}
+Baseline Avg Cost (No Coordination):   {avg_base_cost:.3f} ± {std_base_cost:.3f} EUR/day
+Multi-Agent Avg Cost (With Coord.):     {avg_main_cost:.3f} ± {std_main_cost:.3f} EUR/day
+Average Daily Savings:                  {avg_savings:.3f} ± {std_savings:.3f} EUR ({savings_pct:+.1f}%)
+
+3. DEVICE BREAKDOWN — Mean daily consumption (kWh)
+{'-' * 70}
+"""
+
+    # Merge device names
+    all_devs = sorted(set(list(main_dev_totals.keys()) + list(base_dev_totals.keys())))
+    for dev in all_devs:
+        m_vals = main_dev_totals.get(dev, [])
+        b_vals = base_dev_totals.get(dev, [])
+        m_avg = mean(m_vals)
+        m_std = stddev(m_vals)
+        b_avg = mean(b_vals)
+        b_std = stddev(b_vals)
+        diff = m_avg - b_avg
+        report += (f"{dev:20s}: Baseline {b_avg:7.3f}±{b_std:5.3f} | "
+                   f"Multi-Agent {m_avg:7.3f}±{m_std:5.3f} | "
+                   f"Diff {diff:+7.3f} kWh\n")
+
+    report += f"\n{'=' * 70}\n"
+
+    with open(report_path, "w") as f:
+        f.write(report)
+
+    print(f"\n{'=' * 60}")
+    print(f"  AVERAGED REPORT saved to {report_path}")
+    print(f"  {matched_days} days | Savings: {avg_savings:.3f} EUR/day ({savings_pct:+.1f}%)")
+    print(f"{'=' * 60}\n")
+

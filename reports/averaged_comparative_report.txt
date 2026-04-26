@@ -1,0 +1,30 @@
+======================================================================
+AVERAGED COMPARATIVE SIMULATION REPORT
+======================================================================
+Season: Summer  |  Days simulated: 100  |  Values: Mean ± StdDev
+
+1. OVERALL METRICS (per day)
+----------------------------------------------------------------------
+Metric                   |             Baseline |          Multi-Agent |   Difference
+----------------------------------------------------------------------
+Total Energy (kWh)       |   14.959 ±  5.880 |   13.299 ±  5.237 |     -1.660
+Renewable Used (kWh)     |    3.510 ±  0.938 |    3.523 ±  0.801 |     +0.013
+Solar Generated (kWh)    |    3.983          |    4.002          |     +0.018
+Total Cost (EUR)         |    1.569 ±  0.853 |    1.645 ±  0.905 |     +0.076
+
+2. ECONOMIC ANALYSIS
+----------------------------------------------------------------------
+Baseline Avg Cost (No Coordination):   1.569 ± 0.853 EUR/day
+Multi-Agent Avg Cost (With Coord.):     1.645 ± 0.905 EUR/day
+Average Daily Savings:                  -0.076 ± 1.299 EUR (-4.8%)
+
+3. DEVICE BREAKDOWN — Mean daily consumption (kWh)
+----------------------------------------------------------------------
+ac.livingroom       : Baseline   8.055±3.600 | Multi-Agent   6.169±2.813 | Diff  -1.886 kWh
+air_fryer           : Baseline   1.858±0.819 | Multi-Agent   1.738±0.604 | Diff  -0.120 kWh
+dish_washer         : Baseline   1.164±0.493 | Multi-Agent   1.067±0.303 | Diff  -0.097 kWh
+fridge              : Baseline   4.036±0.333 | Multi-Agent   4.079±0.151 | Diff  +0.043 kWh
+heater.livingroom   : Baseline   5.095±2.024 | Multi-Agent   4.157±4.917 | Diff  -0.939 kWh
+washing_machine     : Baseline   0.601±0.331 | Multi-Agent   0.581±0.201 | Diff  -0.020 kWh
+
+======================================================================
