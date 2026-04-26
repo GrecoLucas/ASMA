@@ -57,10 +57,9 @@ class WashingMotorComponent:
 class WashingMachine(Device):
     """Washing machine device agent that washes clothes based on laundry accumulation."""
 
-    def __init__(self, jid, password, clothes_threshold=WASHING_MACHINE_THRESHOLD, peers=None, enable_price_optimization=False):
-        super().__init__(jid, password, device_type="washing_machine", peers=peers)
+    def __init__(self, jid, password, clothes_threshold=WASHING_MACHINE_THRESHOLD, peers=None, enable_price_optimization=True):
+        super().__init__(jid, password, device_type="washing_machine", peers=peers, enable_price_optimization=enable_price_optimization)
         self.clothes_threshold = clothes_threshold
-        self.enable_price_optimization = enable_price_optimization
         self.pending_clothes = 0
         self.current_hour = None
         from config import MINUTES_PER_STEP

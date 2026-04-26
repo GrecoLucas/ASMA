@@ -73,7 +73,7 @@ class BatteryAgent(Device):
         should_discharge = self.charge_kwh > 0 and unmet_demand_kw > 0.0
 
         if self.enable_price_optimization and should_discharge:
-            if (current_price_eur < (PRICE_MAX - PRICE_MIN) * 0.6 + PRICE_MIN
+            if (current_price_eur < (PRICE_MAX - PRICE_MIN) * 0.75 + PRICE_MIN
                     and self.charge_kwh > self.capacity_kwh * 0.9):
                 should_discharge = False
 

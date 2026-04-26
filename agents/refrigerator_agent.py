@@ -41,8 +41,8 @@ class RefrigeratorCompressor:
 class Refrigerator(Device):
     """Refrigerator device agent that maintains cold temperature using rules."""
 
-    def __init__(self, jid, password, target_temp=FRIDGE_TARGET_TEMP, temp_margin=FRIDGE_TEMP_MARGIN, peers=None):
-        super().__init__(jid, password, device_type="refrigerator", peers=peers)
+    def __init__(self, jid, password, target_temp=FRIDGE_TARGET_TEMP, temp_margin=FRIDGE_TEMP_MARGIN, peers=None, enable_price_optimization=True):
+        super().__init__(jid, password, device_type="refrigerator", peers=peers, enable_price_optimization=enable_price_optimization)
         self.target_temp = target_temp
         self.temp_margin = temp_margin
         self.current_temp = None

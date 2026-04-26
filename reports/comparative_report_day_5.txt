@@ -6,24 +6,23 @@ COMPARATIVE SIMULATION REPORT - DAY 5
 --------------------------------------------------
 Metric                 | Baseline         | Multi-Agent      | Difference
 --------------------------------------------------
-Total Energy (kWh)     |         29.310 |         35.310 |      6.000
-Renewable Used (kWh)   |         10.620 |         10.620 |      0.000
-Total Cost (EUR)       |          2.428 |          2.301 |     -0.127
+Total Energy (kWh)     |         26.630 |         32.820 |      6.190
+Renewable Used (kWh)   |         10.070 |         10.620 |      0.550
+Total Cost (EUR)       |          1.459 |          1.043 |     -0.416
 
 2. ECONOMIC ANALYSIS
 --------------------------------------------------
-Baseline Cost (No Agent Coordination): 2.428 EUR
-Multi-Agent Cost (With Coordination):  2.301 EUR
-Savings Achieved:                      0.127 EUR (5.2%)
+Baseline Cost (No Agent Coordination): 1.459 EUR
+Multi-Agent Cost (With Coordination):  1.043 EUR
+Savings Achieved:                      0.416 EUR (28.5%)
 
 3. DEVICE BREAKDOWN (Multi-Agent vs Baseline)
 --------------------------------------------------
-ac.livingroom       : Baseline   12.150 kWh | Multi-Agent   12.150 kWh | Diff    0.000 kWh
-air_fryer           : Baseline    1.400 kWh | Multi-Agent    1.400 kWh | Diff    0.000 kWh
-battery             : Baseline    3.370 kWh | Multi-Agent    9.870 kWh | Diff    6.500 kWh
+ac.livingroom       : Baseline    9.450 kWh | Multi-Agent    9.450 kWh | Diff    0.000 kWh
+battery             : Baseline    6.140 kWh | Multi-Agent   12.830 kWh | Diff    6.690 kWh
 dish_washer         : Baseline    1.000 kWh | Multi-Agent    0.500 kWh | Diff   -0.500 kWh
 fridge              : Baseline    4.140 kWh | Multi-Agent    4.140 kWh | Diff    0.000 kWh
-heater.livingroom   : Baseline    6.750 kWh | Multi-Agent    6.750 kWh | Diff    0.000 kWh
+heater.livingroom   : Baseline    5.400 kWh | Multi-Agent    5.400 kWh | Diff    0.000 kWh
 washing_machine     : Baseline    0.500 kWh | Multi-Agent    0.500 kWh | Diff    0.000 kWh
 
 ==================================================

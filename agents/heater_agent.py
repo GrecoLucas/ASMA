@@ -40,8 +40,8 @@ class HeaterActuatorComponent:
 class Heater(Device):
 	"""Heater device agent that heats when temperature is too cold."""
 
-	def __init__(self, jid, password, target_temp=HEATER_TARGET_TEMP, temp_margin=HEATER_TEMP_MARGIN, peers=None):
-		super().__init__(jid, password, device_type="heater", peers=peers)
+	def __init__(self, jid, password, target_temp=HEATER_TARGET_TEMP, temp_margin=HEATER_TEMP_MARGIN, peers=None, enable_price_optimization=True):
+		super().__init__(jid, password, device_type="heater", peers=peers, enable_price_optimization=enable_price_optimization)
 		self.target_temp = target_temp
 		self.temp_margin = temp_margin
 		self.current_temp = None

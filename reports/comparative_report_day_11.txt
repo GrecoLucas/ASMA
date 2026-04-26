@@ -6,24 +6,24 @@ COMPARATIVE SIMULATION REPORT - DAY 11
 --------------------------------------------------
 Metric                 | Baseline         | Multi-Agent      | Difference
 --------------------------------------------------
-Total Energy (kWh)     |         26.500 |         28.510 |      2.010
-Renewable Used (kWh)   |          9.540 |          8.360 |     -1.180
-Total Cost (EUR)       |          2.680 |          1.987 |     -0.692
+Total Energy (kWh)     |         23.370 |         28.100 |      4.730
+Renewable Used (kWh)   |          9.260 |          9.470 |      0.210
+Total Cost (EUR)       |          2.149 |          1.551 |     -0.598
 
 2. ECONOMIC ANALYSIS
 --------------------------------------------------
-Baseline Cost (No Agent Coordination): 2.680 EUR
-Multi-Agent Cost (With Coordination):  1.987 EUR
-Savings Achieved:                      0.692 EUR (25.8%)
+Baseline Cost (No Agent Coordination): 2.149 EUR
+Multi-Agent Cost (With Coordination):  1.551 EUR
+Savings Achieved:                      0.598 EUR (27.8%)
 
 3. DEVICE BREAKDOWN (Multi-Agent vs Baseline)
 --------------------------------------------------
-ac.livingroom       : Baseline    8.100 kWh | Multi-Agent    6.750 kWh | Diff   -1.350 kWh
-air_fryer           : Baseline    5.600 kWh | Multi-Agent    4.200 kWh | Diff   -1.400 kWh
-battery             : Baseline    1.760 kWh | Multi-Agent    9.220 kWh | Diff    7.460 kWh
-dish_washer         : Baseline    1.000 kWh | Multi-Agent    1.000 kWh | Diff    0.000 kWh
+ac.livingroom       : Baseline    6.750 kWh | Multi-Agent    6.750 kWh | Diff    0.000 kWh
+air_fryer           : Baseline    4.200 kWh | Multi-Agent    4.200 kWh | Diff    0.000 kWh
+battery             : Baseline    4.080 kWh | Multi-Agent    9.310 kWh | Diff    5.230 kWh
+dish_washer         : Baseline    1.000 kWh | Multi-Agent    0.500 kWh | Diff   -0.500 kWh
 fridge              : Baseline    4.140 kWh | Multi-Agent    4.140 kWh | Diff    0.000 kWh
-heater.livingroom   : Baseline    5.400 kWh | Multi-Agent    2.700 kWh | Diff   -2.700 kWh
+heater.livingroom   : Baseline    2.700 kWh | Multi-Agent    2.700 kWh | Diff    0.000 kWh
 washing_machine     : Baseline    0.500 kWh | Multi-Agent    0.500 kWh | Diff    0.000 kWh
 
 ==================================================

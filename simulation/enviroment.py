@@ -25,8 +25,9 @@ except ImportError:
     GUI_AVAILABLE = False
 
 class WorldAgent(Agent):
-    def __init__(self, jid, password, season="summer", receivers=None):
+    def __init__(self, jid, password, season="summer", receivers=None, enable_price_optimization=True):
         super().__init__(jid, password)
+        self.enable_price_optimization = enable_price_optimization
         self.season = season.lower()
         self.receivers = receivers or []
         self.rng = random.Random(42)  # Fixed seed for reproducible generation

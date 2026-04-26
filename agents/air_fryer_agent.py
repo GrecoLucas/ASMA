@@ -32,8 +32,8 @@ class SwitchComponent:
 class AirFryerAgent(Device):
     """Air Fryer agent that has a random chance to start a cooking cycle each hour."""
 
-    def __init__(self, jid, password, peers=None):
-        super().__init__(jid, password, device_type="air_fryer", peers=peers)
+    def __init__(self, jid, password, peers=None, enable_price_optimization=True):
+        super().__init__(jid, password, device_type="air_fryer", peers=peers, enable_price_optimization=enable_price_optimization)
         self.active_power_kw = AIR_FRYER_ACTIVE_POWER_KW
         self.idle_power_kw = AIR_FRYER_IDLE_POWER_KW
         self.current_priority = AIR_FRYER_PRIORITY

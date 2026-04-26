@@ -56,10 +56,9 @@ class DishWashingMotorComponent:
 class DishWasher(Device):
     """Dish washer device agent that washes dishes based on dish accumulation."""
 
-    def __init__(self, jid, password, dishes_threshold=DISH_WASHER_THRESHOLD, peers=None, enable_price_optimization=False):
-        super().__init__(jid, password, device_type="dish_washer", peers=peers)
+    def __init__(self, jid, password, dishes_threshold=DISH_WASHER_THRESHOLD, peers=None, enable_price_optimization=True):
+        super().__init__(jid, password, device_type="dish_washer", peers=peers, enable_price_optimization=enable_price_optimization)
         self.dishes_threshold = dishes_threshold
-        self.enable_price_optimization = enable_price_optimization
         self.pending_dishes = 0
         self.current_hour = None
         from config import MINUTES_PER_STEP

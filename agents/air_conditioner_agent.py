@@ -40,8 +40,8 @@ class ACActuatorComponent:
 class AirConditioner(Device):
     """Air conditioner device agent with temperature sensor and rule-based actuator control."""
 
-    def __init__(self, jid, password, target_temp=AC_TARGET_TEMP, temp_margin=AC_TEMP_MARGIN, peers=None):
-        super().__init__(jid, password, device_type="air_conditioner", peers=peers)
+    def __init__(self, jid, password, target_temp=AC_TARGET_TEMP, temp_margin=AC_TEMP_MARGIN, peers=None, enable_price_optimization=True):
+        super().__init__(jid, password, device_type="air_conditioner", peers=peers, enable_price_optimization=enable_price_optimization)
         self.target_temp = target_temp
         self.temp_margin = temp_margin
         self.current_temp = None

@@ -24,9 +24,9 @@ async def main():
 
     jid_list = [ac_jid, heater_jid, fridge_jid, whashing_machine_jid, dish_washer_jid, battery_jid, air_fryer_jid]
 
-    ac_livingroom = AirConditioner(ac_jid, PASSWORD, target_temp=21, temp_margin=2, peers=[jid for jid in jid_list if jid != ac_jid])
-    heater_livingroom = Heater(heater_jid, PASSWORD, target_temp=21, temp_margin=2, peers=[jid for jid in jid_list if jid != heater_jid])
-    fridge = Refrigerator(fridge_jid, PASSWORD, target_temp=4, temp_margin=1, peers=[jid for jid in jid_list if jid != fridge_jid])
+    ac_livingroom = AirConditioner(ac_jid, PASSWORD, target_temp=21, temp_margin=2, peers=[jid for jid in jid_list if jid != ac_jid], enable_price_optimization=True)
+    heater_livingroom = Heater(heater_jid, PASSWORD, target_temp=21, temp_margin=2, peers=[jid for jid in jid_list if jid != heater_jid], enable_price_optimization=True)
+    fridge = Refrigerator(fridge_jid, PASSWORD, target_temp=4, temp_margin=1, peers=[jid for jid in jid_list if jid != fridge_jid], enable_price_optimization=True)
     washingmachine = WashingMachine(
         whashing_machine_jid,
         PASSWORD,
@@ -47,9 +47,9 @@ async def main():
         peers=[jid for jid in jid_list if jid != battery_jid],
         enable_price_optimization=True,
     )
-    air_fryer = AirFryerAgent(air_fryer_jid, PASSWORD, peers=[jid for jid in jid_list if jid != air_fryer_jid])
+    air_fryer = AirFryerAgent(air_fryer_jid, PASSWORD, peers=[jid for jid in jid_list if jid != air_fryer_jid], enable_price_optimization=True)
     
-    world_agent = WorldAgent(AGENTS["world"], PASSWORD, season="summer", receivers=jid_list)
+    world_agent = WorldAgent(AGENTS["world"], PASSWORD, season="summer", receivers=jid_list, enable_price_optimization=True)
 
     # Start all agents concurrently (devices and world broadcaster)
     agents_to_start = [

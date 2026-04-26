@@ -27,20 +27,31 @@ from config import (
 class Rule:
     """A rule that evaluates a sensor condition and triggers an actuator action."""
 
-    def __init__(self, name, sensor_name, operator, threshold, actuator_name, command):
+    def __init__(self, name, sensor_name, operator, threshold, actuator_name, command, hour_start=None, hour_end=None):
         self.name = name
         self.sensor_name = sensor_name
         self.operator = operator
         self.threshold = threshold
         self.actuator_name = actuator_name
         self.command = command
+        self.hour_start = hour_start  # Optional: only active from this hour
+        self.hour_end = hour_end      # Optional: only active until this hour
         self.last_triggered = False
         self.negotiation_failures = 0
 
-    def evaluate(self, sensor_value):
-        """Check if the sensor value satisfies the condition."""
+    def evaluate(self, sensor_value, current_hour=None, enable_price_optimization=True):
+        """Check if the sensor value and time constraints satisfy the condition."""
         if sensor_value is None:
             return False
+
+        # Time constraint check - only if optimization is enabled
+        if enable_price_optimization and current_hour is not None and self.hour_start is not None and self.hour_end is not None:
+            if self.hour_start < self.hour_end:
+                if not (self.hour_start <= current_hour < self.hour_end):
+                    return False
+            else: # Overnight range (e.g. 22 to 6)
+                if not (current_hour >= self.hour_start or current_hour < self.hour_end):
+                    return False
 
         if self.operator == ">":
             return sensor_value > self.threshold
@@ -82,7 +93,7 @@ class Device(Agent):
                 if k[0] >= current_day
             }
 
-    def __init__(self, jid, password, device_type="generic", peers=None):
+    def __init__(self, jid, password, device_type="generic", peers=None, enable_price_optimization=False):
         super().__init__(jid, password)
         self.device_type = device_type
         self.peers = peers or []
@@ -96,6 +107,7 @@ class Device(Agent):
         self.rules = []
         self.status = "idle"
         self.shed_timeout = 0
+        self.enable_price_optimization = enable_price_optimization
 
         # Energy model values in kW
         self.active_power_kw = 0.0
@@ -201,18 +213,28 @@ class Device(Agent):
         normalized = max(0.0, min(1.0, normalized))
         return round(sensitivity * (1.0 - 2.0 * normalized))
 
-    def evaluate_rules(self, sensor_name, sensor_value):
+    def evaluate_rules(self, sensor_name, sensor_value, world_state=None):
         """Evaluate all rules for a given sensor and execute matching actuator commands."""
         results = []
+        current_hour = world_state.get("hour") if world_state else None
+        
+        # Proactive Demand Response: Predict next price
+        is_proactive_deferral = False
+        if self.enable_price_optimization:
+            next_price = self.predict_next_price(world_state)
+            price_peak_threshold = PRICE_MIN + (PRICE_MAX - PRICE_MIN) * 0.8
+            if next_price > price_peak_threshold and self.calculate_priority(world_state) <= 2:
+                is_proactive_deferral = True
+
         for rule in self.rules:
             if rule.sensor_name != sensor_name:
                 continue
 
-            condition_met = rule.evaluate(sensor_value)
+            condition_met = rule.evaluate(sensor_value, current_hour, self.enable_price_optimization)
 
             if condition_met and not rule.last_triggered:
-                if rule.command == "on" and self.shed_timeout > 0:
-                    continue  # Under shedding penalty, cannot turn on right now
+                if rule.command == "on" and (self.shed_timeout > 0 or is_proactive_deferral):
+                    continue  # Under shedding penalty or proactive deferral, cannot turn on right now
 
                 if rule.command == "off" and self.shed_timeout > 0:
                     continue  # Don't fire off rules during shed — device is already off
@@ -317,6 +339,25 @@ class Device(Agent):
             "daily_consumption_kwh": round(self.daily_consumption_kwh, 3),
         }
 
+    def predict_next_price(self, world_state):
+        """Predict the price for the next time slot based on the known sine-wave generator."""
+        if not world_state: return DEFAULT_ENERGY_PRICE
+        import math
+        hour = world_state.get("hour", 0)
+        minute = world_state.get("minute", 0)
+        from config import MINUTES_PER_STEP
+        
+        next_total_minutes = (hour * 60 + minute + MINUTES_PER_STEP) % (24 * 60)
+        next_hour_float = next_total_minutes / 60.0
+        
+        # Mirroring EnergyPriceGenerator logic from enviroment.py
+        # price = PRICE_MIN + (PRICE_MAX - PRICE_MIN) * (0.5 + 0.5 * sin(2 * pi * (hour - 6) / 24))
+        # Note: hour-6 shifts peak to 12:00 (midday) and 00:00 (midnight) is min.
+        # Wait, looking at sine wave: sin(0) at 6am, sin(pi/2) at 12pm, sin(pi) at 6pm, sin(3pi/2) at 12am.
+        # Actually, peak is 12pm.
+        val = 0.5 + 0.5 * math.sin(2 * math.pi * (next_hour_float - 6) / 24)
+        return PRICE_MIN + (PRICE_MAX - PRICE_MIN) * val
+ 
     def get_log_info(self, world_state):
         hour = world_state.get("hour", 0)
         minute = world_state.get("minute", 0)
@@ -540,7 +581,10 @@ class Device(Agent):
                             feasible_sets.append((priorities, -total_shed, candidate_set))
 
                     if feasible_sets:
-                        feasible_sets.sort(key=lambda item: (item[0], item[1]))
+                        # Smarter shedding order:
+                        # 1. Primary sort: sum of priorities (lower is better)
+                        # 2. Secondary sort: total power reduction (higher is better)
+                        feasible_sets.sort(key=lambda item: (sum(item[0]), item[1]))
                         best_set = feasible_sets[0][2]
                         selected_shedders = [item[0] for item in best_set]
                         commit = True
@@ -720,7 +764,7 @@ class Device(Agent):
                     all_rule_results = []
                     for sensor_name in self.agent.sensors.keys():
                         sensor_value = self.agent.get_sensor_data(sensor_name)
-                        rule_results = self.agent.evaluate_rules(sensor_name, sensor_value)
+                        rule_results = self.agent.evaluate_rules(sensor_name, sensor_value, world_state)
                         all_rule_results.extend(rule_results)
 
                     self.agent.update_energy_counters(world_state)
