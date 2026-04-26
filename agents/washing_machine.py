@@ -1,6 +1,6 @@
 from .device_base import Device, Rule
 from config import (
-    WASHING_MACHINE_THRESHOLD, WASHING_MACHINE_CYCLE_DURATION_STEPS,
+    WASHING_MACHINE_THRESHOLD, WASHING_MACHINE_CYCLE_DURATION_MINUTES,
     WASHING_MACHINE_PER_CYCLE, WASHING_MACHINE_ACCUMULATION_RATE,
     WASHING_MACHINE_PRICE_SENSITIVITY, WASHING_MACHINE_ACTIVE_POWER_KW,
     WASHING_MACHINE_IDLE_POWER_KW, WASHING_MACHINE_WAITING_BONUS_DIVIDER,
@@ -63,10 +63,11 @@ class WashingMachine(Device):
         self.enable_price_optimization = enable_price_optimization
         self.pending_clothes = 0
         self.current_hour = None
+        from config import MINUTES_PER_STEP
         self.cycle_steps_remaining = 0  # Steps remaining in current wash cycle
-        self.cycle_duration_steps = WASHING_MACHINE_CYCLE_DURATION_STEPS
+        self.cycle_duration_steps = max(1, WASHING_MACHINE_CYCLE_DURATION_MINUTES // MINUTES_PER_STEP)
         self.clothes_per_cycle = WASHING_MACHINE_PER_CYCLE
-        self.accumulation_rate = WASHING_MACHINE_ACCUMULATION_RATE
+        self.accumulation_rate = WASHING_MACHINE_ACCUMULATION_RATE * (MINUTES_PER_STEP / 60.0)
         self.steps_waiting = 0          # How many steps clothes have been waiting (>= threshold)
         self.price_sensitivity = WASHING_MACHINE_PRICE_SENSITIVITY
         self.current_energy_price = DEFAULT_ENERGY_PRICE  # Updated each tick from world state

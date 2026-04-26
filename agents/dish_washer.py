@@ -1,9 +1,9 @@
 from .device_base import Device, Rule
 from config import (
-    DISH_WASHER_THRESHOLD, DISH_WASHER_CYCLE_DURATION_STEPS, DISH_WASHER_PER_CYCLE,
-    DISH_WASHER_ACCUMULATION_RATE, DISH_WASHER_PRICE_SENSITIVITY,
-    DISH_WASHER_ACTIVE_POWER_KW, DISH_WASHER_IDLE_POWER_KW,
-    DISH_WASHER_WAITING_BONUS_DIVIDER, DISH_WASHER_PRIORITY_THRESHOLDS,
+    DISH_WASHER_THRESHOLD, DISH_WASHER_CYCLE_DURATION_MINUTES,
+    DISH_WASHER_PER_CYCLE, DISH_WASHER_ACCUMULATION_RATE,
+    DISH_WASHER_PRICE_SENSITIVITY, DISH_WASHER_ACTIVE_POWER_KW,
+    DISH_WASHER_IDLE_POWER_KW, DISH_WASHER_WAITING_BONUS_DIVIDER, DISH_WASHER_PRIORITY_THRESHOLDS,
     DEFAULT_ENERGY_PRICE, PRICE_MIN, PRICE_MAX
 )
 
@@ -62,10 +62,11 @@ class DishWasher(Device):
         self.enable_price_optimization = enable_price_optimization
         self.pending_dishes = 0
         self.current_hour = None
+        from config import MINUTES_PER_STEP
         self.cycle_steps_remaining = 0  # Steps remaining in current wash cycle
-        self.cycle_duration_steps = DISH_WASHER_CYCLE_DURATION_STEPS
+        self.cycle_duration_steps = max(1, DISH_WASHER_CYCLE_DURATION_MINUTES // MINUTES_PER_STEP)
         self.dishes_per_cycle = DISH_WASHER_PER_CYCLE
-        self.accumulation_rate = DISH_WASHER_ACCUMULATION_RATE
+        self.accumulation_rate = DISH_WASHER_ACCUMULATION_RATE * (MINUTES_PER_STEP / 60.0)
         self.steps_waiting = 0          # How many steps dishes have been waiting (>= threshold)
         self.price_sensitivity = DISH_WASHER_PRICE_SENSITIVITY
         self.current_energy_price = DEFAULT_ENERGY_PRICE  # Updated each tick from world state

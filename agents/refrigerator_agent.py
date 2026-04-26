@@ -83,17 +83,19 @@ class Refrigerator(Device):
         self.current_hour = world_state.get("hour")
 
         if ambient_temp is not None:
+            from config import MINUTES_PER_STEP
+            scale = MINUTES_PER_STEP / 60.0
             compressor = self.actuators["compressor"]
             if compressor.is_running:
                 cooled_target = self.target_temp + (ambient_temp - 20) * FRIDGE_COOLING_COEFFICIENT
                 if self.current_temp is None:
                     self.current_temp = cooled_target
                 else:
-                    self.current_temp += (cooled_target - self.current_temp) * FRIDGE_TEMP_UPDATE_RATE_ON
+                    self.current_temp += (cooled_target - self.current_temp) * (FRIDGE_TEMP_UPDATE_RATE_ON * scale)
             else:
                 if self.current_temp is None:
                     self.current_temp = self.target_temp
-                self.current_temp += (ambient_temp - self.current_temp) * FRIDGE_TEMP_UPDATE_RATE_OFF
+                self.current_temp += (ambient_temp - self.current_temp) * (FRIDGE_TEMP_UPDATE_RATE_OFF * scale)
 
             self.sensors["temperature"].update(round(self.current_temp, 1))
 

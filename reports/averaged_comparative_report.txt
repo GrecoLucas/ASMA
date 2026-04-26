@@ -7,25 +7,25 @@ Season: Summer  |  Days simulated: 100  |  Values: Mean ± StdDev
 ----------------------------------------------------------------------
 Metric                   |             Baseline |          Multi-Agent |   Difference
 ----------------------------------------------------------------------
-Total Energy (kWh)       |   15.613 ±  5.109 |   15.614 ±  2.904 |     +0.001
-Renewable Used (kWh)     |    5.347 ±  1.478 |    5.617 ±  0.769 |     +0.271
-Solar Generated (kWh)    |    6.407          |    6.407          |     +0.000
-Total Cost (EUR)         |    1.763 ±  0.767 |    1.703 ±  0.589 |     -0.060
+Total Energy (kWh)       |   16.265 ±  3.537 |   15.189 ±  4.026 |     -1.075
+Renewable Used (kWh)     |    9.464 ±  1.530 |    9.148 ±  2.099 |     -0.316
+Solar Generated (kWh)    |   10.989          |   10.989          |     +0.000
+Total Cost (EUR)         |    1.144 ±  0.528 |    1.054 ±  0.535 |     -0.090
 
 2. ECONOMIC ANALYSIS
 ----------------------------------------------------------------------
-Baseline Avg Cost (No Coordination):   1.763 ± 0.767 EUR/day
-Multi-Agent Avg Cost (With Coord.):     1.703 ± 0.589 EUR/day
-Average Daily Savings:                  0.060 ± 0.856 EUR (+3.4%)
+Baseline Avg Cost (No Coordination):   1.144 ± 0.528 EUR/day
+Multi-Agent Avg Cost (With Coord.):     1.054 ± 0.535 EUR/day
+Average Daily Savings:                  0.090 ± 0.657 EUR (+7.9%)
 
 3. DEVICE BREAKDOWN — Mean daily consumption (kWh)
 ----------------------------------------------------------------------
-ac.livingroom       : Baseline   5.926±2.334 | Multi-Agent   5.940±1.870 | Diff  +0.014 kWh
-air_fryer           : Baseline   1.120±0.954 | Multi-Agent   1.190±0.962 | Diff  +0.070 kWh
+ac.livingroom       : Baseline   6.224±1.908 | Multi-Agent   5.710±2.261 | Diff  -0.513 kWh
+air_fryer           : Baseline   1.246±1.013 | Multi-Agent   1.204±1.072 | Diff  -0.042 kWh
 battery             : Baseline   0.000±0.000 | Multi-Agent   0.000±0.000 | Diff  +0.000 kWh
-dish_washer         : Baseline   0.930±0.333 | Multi-Agent   0.790±0.433 | Diff  -0.140 kWh
-fridge              : Baseline   3.859±1.027 | Multi-Agent   4.118±0.100 | Diff  +0.259 kWh
-heater.livingroom   : Baseline   3.267±2.005 | Multi-Agent   3.146±1.861 | Diff  -0.122 kWh
-washing_machine     : Baseline   0.510±0.275 | Multi-Agent   0.430±0.188 | Diff  -0.080 kWh
+dish_washer         : Baseline   0.985±0.337 | Multi-Agent   0.770±0.441 | Diff  -0.215 kWh
+fridge              : Baseline   3.994±0.733 | Multi-Agent   4.037±0.583 | Diff  +0.043 kWh
+heater.livingroom   : Baseline   3.321±1.814 | Multi-Agent   3.038±1.731 | Diff  -0.283 kWh
+washing_machine     : Baseline   0.495±0.181 | Multi-Agent   0.430±0.174 | Diff  -0.065 kWh
 
 ======================================================================

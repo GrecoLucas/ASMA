@@ -222,8 +222,9 @@ class WorldAgent(Agent):
         target_temp = base_temp + cycle
 
         # Smooth transition: move current temp towards target by a small amount
-        # This simulates thermal inertia in the environment
-        transition_rate = 0.1  # How fast the temperature shifts (0-1, higher = faster)
+        # This simulates thermal inertia in the environment, scaled by step size
+        base_transition_rate_per_hour = 0.1  # How fast the temperature shifts per hour
+        transition_rate = base_transition_rate_per_hour * (MINUTES_PER_STEP / 60.0)
         self.current_temperature += (target_temp - self.current_temperature) * transition_rate
 
         # Add small random variation for realistic weather fluctuations (±0.5°C)

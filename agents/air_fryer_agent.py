@@ -78,7 +78,8 @@ class AirFryerAgent(Device):
             hour = world_state.get("hour", 0)
             minute = world_state.get("minute", 0)
             rng = random.Random(hash((day, hour, minute, "air_fryer")))
-            if rng.random() < AIR_FRYER_CHANCE_PER_HOUR:
+            scaled_chance = AIR_FRYER_CHANCE_PER_HOUR * (MINUTES_PER_STEP / 60.0)
+            if rng.random() < scaled_chance:
                 self.cycle_minutes_remaining = AIR_FRYER_CYCLE_DURATION_MINUTES
 
         # Timer logic: Subtract the actual simulated minutes passed
